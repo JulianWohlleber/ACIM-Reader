@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ACIM Reader</title>
+<style>
+  :root {
+    --bg: #fbfbf9; --fg: #23272e; --muted: #8a8f98; --accent: #2f6fed;
+    --accent-soft: rgba(47,111,237,0.14); --pill: rgba(20,24,32,0.06);
+    --sep: rgba(20,24,32,0.10); --word: #1a4dc8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181d; --fg:#e8eaee; --muted:#7c828d; --sep:rgba(255,255,255,0.10);
+            --accent:#5b8dff; --accent-soft:rgba(91,141,255,0.16); --pill:rgba(255,255,255,0.07); --word:#8ab2ff; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+               font: 17px/1.72 Georgia, "Iowan Old Style", "Times New Roman", serif; }
+  #app { display:flex; flex-direction:column; height:100dvh; }
+
+  /* ---------- header ---------- */
+  header { display:flex; align-items:center; gap:10px; padding:10px 14px;
+           border-bottom:1px solid var(--sep); font-family:-apple-system,system-ui,sans-serif; }
+  header .ico { font-size:19px; cursor:pointer; user-select:none; opacity:.85; padding:4px 6px; }
+  header .meta { min-width:0; flex:1; }
+  header .chapter { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  header .sub { font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  header .sub.browsing { color:#c77f1a; font-weight:600; }
+
+  /* ---------- page ---------- */
+  main { flex:1; position:relative; overflow:hidden; }
+  #page { position:absolute; inset:0; overflow-y:auto; padding:22px 20px 90px;
+          scroll-behavior:smooth; }
+  .booktitle { border-bottom:1px solid var(--sep); margin-bottom:16px; padding-bottom:12px; }
+  .booktitle h1 { font-size:21px; margin:0; font-weight:600; }
+  .booktitle .tag { font-size:12px; color:var(--muted); font-family:-apple-system,system-ui,sans-serif; }
+  p.para { margin:0 0 14px; text-align:justify; }
+  s { text-decoration:none; border-radius:4px; padding:0 3px; transition:background .12s; cursor:pointer; }
+  s.cur { background:var(--accent-soft); }
+  s u { text-decoration:none; color:var(--word); font-weight:600; }
+  .edge { position:absolute; top:45%; padding:16px 10px; color:var(--muted); font-size:20px;
+          font-family:-apple-system,system-ui,sans-serif; cursor:pointer; user-select:none;
+          background:var(--pill); border-radius:10px; z-index:5; }
+
+  /* ---------- floating pill ---------- */
+  #backpill { position:absolute; left:50%; transform:translateX(-50%); bottom:12px; z-index:6;
+              font-family:-apple-system,system-ui,sans-serif; font-size:12.5px; font-weight:600;
+              background:var(--accent); color:#fff; padding:9px 15px; border-radius:99px;
+              border:none; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; }
+
+  /* ---------- footer ---------- */
+  footer { display:flex; align-items:center; justify-content:center; gap:34px;
+           border-top:1px solid var(--sep); padding:10px 0 max(10px, env(safe-area-inset-bottom));
+           font-family:-apple-system,system-ui,sans-serif; background:var(--bg); }
+  footer button { background:none; border:none; font-size:22px; cursor:pointer; color:var(--fg); }
+  footer #play { font-size:40px; color:var(--accent); }
+  .pageno { position:absolute; right:14px; bottom:14px; font-size:10.5px; color:var(--muted);
+            font-family:-apple-system,system-ui,sans-serif; }
+
+  /* ---------- toast / loader ---------- */
+  #overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+             background:var(--bg); z-index:20; font-family:-apple-system,system-ui,sans-serif; }
+  #overlay.show { display:flex; }
+  #overlay .card { text-align:center; max-width:340px; padding:26px; }
+  #overlay h2 { font-size:18px; margin:6px 0 10px; }
+  #overlay p { font-size:13px; color:var(--muted); line-height:1.5; }
+  #overlay progress { width:220px; height:6px; }
+  #overlay button.big { margin-top:14px; font-size:15px; font-weight:600; padding:12px 22px;
+             border:none; border-radius:99px; background:var(--accent); color:#fff; cursor:pointer; }
+
+  /* ---------- sheets (TOC & settings) ---------- */
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:30; display:none; }
+  .sheet.open { display:block; }
+  .sheet .panel { position:absolute; top:0; right:0; bottom:0; width:min(360px, 86vw);
+                  background:var(--bg); box-shadow:-8px 0 30px rgba(0,0,0,.2);
+                  display:flex; flex-direction:column; font-family:-apple-system,system-ui,sans-serif; }
+  .sheet .head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+                 border-bottom:1px solid var(--sep); font-weight:700; font-size:15px; }
+  .sheet .head button { border:none; background:none; font-size:14px; color:var(--accent); cursor:pointer; }
+  .sheet .body { flex:1; overflow-y:auto; padding:6px 0; }
+  .sheet .body .item { padding:11px 16px; cursor:pointer; display:flex; flex-direction:column; gap:1px; }
+  .sheet .body .item:hover { background:var(--pill); }
+  .sheet .body .item .t { font-size:14px; }
+  .sheet .body .item .s { font-size:11px; color:var(--muted); }
+  .sheet .body .group { padding:8px 16px 4px; font-size:11px; letter-spacing:.8px;
+                        color:var(--muted); text-transform:uppercase; font-weight:700; }
+  #setBody { padding:14px 16px; }
+  #setBody label { font-size:13px; font-weight:600; display:block; margin:10px 0 4px; }
+  #setBody select { width:100%; padding:9px; font-size:14px; border-radius:8px;
+                    border:1px solid var(--sep); background:var(--bg); color:var(--fg); }
+  #setBody input[type=range] { width:100%; }
+  #setBody .hint { font-size:11.5px; color:var(--muted); margin-top:4px; }
+  #srcBtns { margin-top:18px; display:flex; flex-direction:column; gap:8px; }
+  #srcBtns button { padding:10px; font-size:13px; border-radius:10px; cursor:pointer;
+                     border:1px solid var(--sep); background:none; color:var(--fg); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="ico" id="tocBtn" title="Contents">&#9776;</div>
+    <div class="meta">
+      <div class="chapter" id="chapterTitle">A Course in Miracles</div>
+      <div class="sub" id="statusSub">Ready</div>
+    </div>
+    <div class="ico" id="setBtn" title="Settings">&#9834;</div>
+  </header>
+
+  <main id="main">
+    <div class="edge" id="prevEdge" style="left:6px">&#10094;</div>
+    <div class="edge" id="nextEdge" style="right:6px">&#10095;</div>
+
+    <div id="page" aria-live="polite"></div>
+
+    <button id="backpill">&#9678; Back to audio</button>
+
+    <div id="overlay">
+      <div class="card">
+        <div style="font-size:34px" id="ovIcon">&#128218;</div>
+        <h2 id="ovTitle">ACIM Reader</h2>
+        <p id="ovText">A Course in Miracles, Urtext edition &mdash; read aloud with live highlighting.</p>
+        <progress id="ovBar" value="0" max="100" style="display:none"></progress>
+        <div id="ovBtns">
+          <button class="big" id="ovPrimary">Load full book from archive.org (~4&nbsp;MB, once)</button>
+          <div id="srcBtns">
+            <button id="ovUseSample">Start with excerpt (offline)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer style="position:relative">
+    <span class="pageno" id="pageNo"></span>
+    <button id="prevSent" title="Previous sentence">&#8630;</button>
+    <button id="play" title="Play/Pause">&#9654;&#65038;</button>
+    <button id="nextSent" title="Next sentence">&#8635;</button>
+  </footer>
+</div>
+
+<!-- TOC sheet -->
+<div class="sheet" id="tocSheet">
+  <div class="panel">
+    <div class="head">Contents <button data-close>All done</button></div>
+    <div class="body" id="tocBody"></div>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheet" id="setSheet">
+  <div class="panel">
+    <div class="head">Settings <button data-close>Done</button></div>
+    <div class="body" id="setBody">
+      <label>Voice</label>
+      <select id="voiceSel"></select>
+      <div class="hint" id="voiceHint">Premium/enhanced system voices sound best.</div>
+      <label>Speed <span id="rateVal" style="font-weight:400;color:var(--muted)"></span></label>
+      <input type="range" id="rate" min="0.6" max="1.4" step="0.05" value="1">
+      <div class="hint">1.0 = normal speech rate.</div>
+      <div id="srcBtns2" style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
+        <button id="loadFull">Load full book from archive.org</button>
+        <button id="reloadBook">Back to excerpt</button>
+      </div>
+      <p class="hint" style="margin-top:16px">
+        Text: Urtext edition (public domain), fetched from archive.org
+        (item ACourseInMircalesUrtextEdition) and cached locally in your browser.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   ACIM Reader - web edition
+   Same interaction model as the native app:
+   - audio position (sentence id) and view position (page) are separate
+   - tap sentence  -> seek audio there
+   - swipe / arrows-> browse pages, audio keeps playing
+   - play          -> snap view back to the audio page, then resume
+   ===================================================================== */
+
+const SSP = 20;               // sentences per page
+const URTEXT_URL = "https://archive.org/download/ACourseInMircalesUrtextEdition/ACourseInMiraclesUrtextEdition_djvu.txt";
+const LS = { pos:"acim.pos", rate:"acim.rate", voice:"acim.voice", book:"acim.book" };
+
+/* ---------------- embedded public-domain excerpt (1975 edition) ------------- */
+const SAMPLE = `Introduction
+
+This is a course in miracles. It is a required course. Only the time you take it is voluntary. Free will does not mean that you can establish the curriculum. It means only that you can elect what you want to take at a given time. The course does not aim at the teaching of the meaning of love, for that is beyond what can be taught. It does aim, however, at removing the blocks to the awareness of love's presence, which is your natural inheritance. The opposite of love is fear, but what is all-encompassing can have no opposite.
+
+This course can therefore be summed up very simply in this way: Nothing real can be threatened. Nothing unreal exists. Herein lies the peace of God.
+
+Chapter 1 THE MEANING OF MIRACLES
+
+There is no order of difficulty in miracles. One is not "harder" or "bigger" than another. They are all the same. All expressions of love are maximal. Miracles as such do not appear in the Bible, because they are part of normal life.
+
+Miracles are natural. When they do not occur something has gone wrong. Miracles are everyone's right, but purification is necessary first. Miracles are habits, and should be involuntary. They should not be under conscious control.
+
+The body is the learning device of the mind. The mind is the means by which the body is acted upon. Miracles are both beginnings and endings, and so they alter the temporal order. Miracles bear witness to truth. They are convincing because they arise from conviction.
+
+WORKBOOK
+
+Lesson 1
+
+Nothing I see in this room means anything. Now look slowly about you, and practice applying this idea to whatever you see. Thus it becomes an ordinary part of your daily life.
+
+Lesson 2
+
+I have given everything I see in this room all the meaning that it has for me. Practice with anything your glance falls upon. Apply the idea to whatever you see.`;
+
+/* ------------------------------- parser -------------------------------- */
+function splitSentences(text) {
+  const s = text.replace(/\s+/g, " ").trim();
+  const out = [];
+  const re = /([.!?]["')\]]*(?:\s+|$))/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    const candidate = s.slice(last, m.index + m[0].length);
+    // avoid splitting on common abbreviations / initialisms
+    const head = candidate.trim();
+    if (/\b(Mr|Mrs|Dr|St|Jr|vs|etc|i\.e|e\.g)\.$/.test(head) === false || m[0].length > 1) {
+      out.push(candidate.trim());
+      last = m.index + m[0].length;
+    }
+  }
+  if (last < s.length) { const tail = s.slice(last).trim(); if (tail.length > 1) out.push(tail); }
+  return out.filter(t => t.length > 1);
+}
+
+function classifyHeading(line) {
+  const compact = line.toUpperCase().replace(/\s+/g, "");
+  if (compact === "TEXT" || compact === "TEXTBOOK" || compact === "THETEXT") return { part:"text" };
+  if (compact.startsWith("WORKBOOK") && compact.length <= 40) return { part:"workbook" };
+  if (compact.startsWith("MANUAL") && compact.length <= 40) return { part:"manual" };
+  let m = line.match(/^CHAPTER\s+(\d+)\b\s*(.*)$/i);
+  if (m) return { part:null, no:+m[1], title:m[2].replace(/^[\s.:\-]+/, "").trim() };
+  m = line.match(/^LESSON\s+(\d+)\b\s*(.*)$/i);
+  if (m) return { part:null, no:+m[1], title:m[2].replace(/^[\s.:\-]+/, "").trim(), lesson:true };
+  if (line.length <= 70 && /^\d+\.\s+\S/.test(line) && !/[.;]/.test(line.slice(2))) {
+    const mm = line.match(/^(\d+)\.\s+(.*)$/);
+    if (mm) return { part:null, no:+mm[1], title:mm[2].trim() };
+  }
+  return null;
+}
+
+function parse(raw) {
+  const content = raw.replace(/\r\n?/g, "\n").replace(/\f/g, "\n").replace(/-\n(?=[a-z])/g, "");
+  const lines = content.split("\n").map(l => l.trim())
+    .filter(l => l && !(/^\d{1,4}$/.test(l)) && !l.includes("....."));
+  const stream = [];
+  let buf = [], part = "text";
+  const flush = () => { if (buf.length) { stream.push({ text: buf.join(" "), part }); buf = []; } };
+  for (const line of lines) {
+    const h = classifyHeading(line);
+    if (h) {
+      flush();
+      if (h.part) { part = h.part; }
+      else stream.push({ chapter: true, no: h.no, title: h.title, part });
+    } else buf.push(line);
+  }
+  flush();
+
+  const sentences = [], paragraphs = [], chapters = [];
+  if (!stream.some(e => e.chapter)) {
+    let ps = [], para = [];
+    for (const e of stream) { for (const s of splitSentences(e.text)) para.push(s); }
+    // single fallback chapter, split into paragraphs by original stream entries
+    for (const e of stream) {
+      const ss = splitSentences(e.text); if (!ss.length) continue;
+      const ids = ss.map(t => sentences.push({ id: sentences.length, ch: 0, para: paragraphs.length, text: t }) - 1);
+      paragraphs.push({ id: paragraphs.length, sids: ids });
+    }
+    chapters.push({ id: 0, no: 0, title: "A Course in Miracles", part: "unknown", first: 0, last: Math.max(0, sentences.length - 1) });
+    return { sentences, paragraphs, chapters };
+  }
+
+  let cur = { no: 0, title: "", part: "text", first: 0 };
+  let hasOpen = false;
+  const close = () => {
+    if (hasOpen) chapters.push({ id: chapters.length, ...cur, last: Math.max(0, sentences.length - 1) });
+    hasOpen = false;
+  };
+  for (const e of stream) {
+    if (e.chapter) {
+      close();
+      hasOpen = true;
+      cur = { no: e.no, title: e.title, part: e.part || (chapters.length ? chapters[chapters.length - 1].part : "text"), first: sentences.length };
+    } else {
+      if (!hasOpen) { hasOpen = true; cur = { no: 0, title: "", part: e.part || "text", first: 0 }; }
+      if (!cur.title && cur.no === 0 && cur.first === sentences.length && e.part) cur.part = e.part;
+      const ss = splitSentences(e.text);
+      if (!ss.length) continue;
+      const pid = paragraphs.length;
+      const ids = ss.map(t => sentences.push({ id: sentences.length, ch: chapters.length, para: pid, text: t }) - 1);
+      paragraphs.push({ id: pid, sids: ids });
+    }
+  }
+  close();
+  if (chapters.length && chapters[0].no === 0 && !chapters[0].title)
+    chapters[0].title = "Introduction", chapters[0].part = "text";
+  return { sentences, paragraphs, chapters };
+}
+
+/* ------------------------------ state ---------------------------------- */
+let book = null;
+let audioId = +(localStorage.getItem(LS.pos) || 0);
+let wordIdx = -1;                 // words spoken inside current sentence
+let isPlaying = false, isPaused = false;
+let utter = null, intentionalStop = false;
+let following = true;
+let viewPage = 0;
+
+const pageOf = sid => Math.floor(sid / SSP);
+const pageCount = () => Math.max(1, Math.ceil(book.sentences.length / SSP));
+const $ = id => document.getElementById(id);
+
+function chapterOf(sid) {
+  for (const c of book.chapters) if (sid >= c.first && sid <= c.last) return c;
+  return book.chapters[0];
+}
+function isBrowsing() { return viewPage !== pageOf(audioId); }
+
+/* ------------------------------ rendering ------------------------------- */
+function render() {
+  if (!book) return;
+  const page = $("page");
+  const a = viewPage * SSP, b = Math.min(a + SSP, book.sentences.length);
+  const frag = document.createDocumentFragment();
+  if (viewPage === 0) {
+    const t = document.createElement("div");
+    t.className = "booktitle";
+    t.innerHTML = "<h1>A Course in Miracles</h1><div class='tag'>Urtext edition &middot; read aloud, sentence by sentence</div>";
+    frag.appendChild(t);
+  }
+  let curPara = -1, wrap = null;
+  for (let sid = a; sid < b; sid++) {
+    const s = book.sentences[sid];
+    if (s.para !== curPara) {
+      curPara = s.para;
+      wrap = document.createElement("p");
+      wrap.className = "para";
+      frag.appendChild(wrap);
+    }
+    const el = document.createElement("s");
+    el.id = "s" + sid;
+    if (sid === audioId) { el.className = "cur"; paintWord(el); }
+    el.textContent = s.text + " ";
+    el.onclick = () => tapSentence(sid);
+    wrap.appendChild(el);
+  }
+  page.replaceChildren(frag);
+  const c = chapterOf(audioId);
+  $("chapterTitle").textContent = (viewPage === 0 ? "A Course in Miracles" :
+      (c.no ? (c.part === "workbook" ? "Lesson " + c.no : "Chapter " + c.no + (c.title ? " — " + c.title : "")) : c.title || "Text"));
+  const brows = isBrowsing();
+  $("statusSub").textContent = brows
+      ? "Browsing — audio continues on page " + (pageOf(audioId) + 1)
+      : "Sentence " + (audioId + 1) + " of " + book.sentences.length + (isPlaying ? "  ·  ▶" : isPaused ? "  ·  ‖" : "");
+  $("statusSub").classList.toggle("browsing", brows);
+  $("pageNo").textContent = "page " + (viewPage + 1) + " of " + pageCount();
+  $("backpill").style.display = brows ? "block" : "none";
+  $("play").innerHTML = (isPlaying || isPaused) ? "&#10074;&#10074;" : "&#9654;&#65038;";
+  const cs = document.getElementById("s" + audioId);
+  if (cs && !brows && (isPlaying || isPaused) && cs.scrollIntoView)
+    cs.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function paintWord(el) {
+  // wrap the current word in <u> for karaoke effect
+  const s = book.sentences[audioId];
+  const words = s.text.split(" ");
+  el.textContent = "";
+  if (wordIdx < 0 || !isPlaying && !isPaused) { el.textContent = s.text + " "; return; }
+  const upto = words.slice(0, wordIdx + 1).join(" ");
+  const cur = words[wordIdx + 1] || "";
+  el.append(upto ? upto + " " : "");
+  if (cur) { const u = document.createElement("u"); u.textContent = cur; el.appendChild(u); el.append(" "); }
+  el.append(words.slice(wordIdx + 2).join(" ") + " ");
+}
+
+/* ------------------------------ interactions ---------------------------- */
+function tapSentence(sid) {
+  const wasActive = isPlaying || isPaused;
+  stopSpeak();
+  audioId = Math.max(0, Math.min(sid, book.sentences.length - 1));
+  wordIdx = -1;
+  savePos();
+  following = true;
+  viewPage = pageOf(audioId);
+  render();
+  if (wasActive) speak();           // seek + continue
+}
+
+function swipe(dir) {               // dir: +1 next page, -1 prev
+  const target = Math.max(0, Math.min(viewPage + dir, pageCount() - 1));
+  viewPage = target;
+  following = target === pageOf(audioId);
+  render();
+}
+
+function pressPlay() {
+  if (isPlaying) { pause(); return; }
+  if (isBrowsing()) {               // snap back to the audio page first
+    following = true; viewPage = pageOf(audioId);
+  }
+  render();
+  if (isPaused) resume(); else speak();
+}
+
+function goAudioPill() { following = true; viewPage = pageOf(audioId); render(); }
+
+function stepSentence(fwd) {
+  const t = audioId + (fwd ? 1 : -1);
+  if (t >= 0 && t < book.sentences.length) tapSentence(t);
+}
+
+/* ------------------------------ TTS core ------------------------------- */
+let voices = [];
+function refreshVoices() {
+  voices = (speechSynthesis.getVoices() || []).filter(v => v.lang && v.lang.toLowerCase().startsWith("en"));
+  voices.sort((x, y) => {
+    const q = v => /premium|enhanced|neural/i.test(v.name) ? 0 : /natural/i.test(v.name) ? 1 : 2;
+    if (q(x) !== q(y)) return q(x) - q(y);
+    const p = v => v.lang === "en-US" || v.lang === "en-GB" ? 0 : 1;
+    if (p(x) !== p(y)) return p(x) - p(y);
+    return x.name.localeCompare(y.name);
+  });
+  const sel = $("voiceSel");
+  sel.innerHTML = "";
+  for (const v of voices) {
+    const o = document.createElement("option");
+    o.value = v.name; o.textContent = `${v.name} (${v.lang})${/premium|enhanced|neural/i.test(v.name) ? " ★" : ""}`;
+    sel.appendChild(o);
+  }
+  const saved = localStorage.getItem(LS.voice);
+  if (saved && voices.some(v => v.name === saved)) sel.value = saved;
+  else if (voices[0]) sel.value = voices[0].name;
+}
+speechSynthesis.onvoiceschanged = refreshVoices;
+
+function chosenVoice() {
+  const name = localStorage.getItem(LS.voice);
+  return voices.find(v => v.name === name) || voices[0] || null;
+}
+
+function speak() {
+  if (!book) return;
+  const s = book.sentences[audioId];
+  if (!s) return;
+  intentionalStop = true; speechSynthesis.cancel(); intentionalStop = false;
+  utter = new SpeechSynthesisUtterance(s.text);
+  const v = chosenVoice(); if (v) utter.voice = v;
+  utter.rate = +(localStorage.getItem(LS.rate) || 1);
+  utter.onboundary = ev => {
+    if (ev.name && ev.name !== "word") return;
+    const upto = s.text.slice(0, ev.charIndex);
+    const w = upto ? upto.split(/\s+/).length - (/\s$/.test(upto) ? 1 : 0) : 0;
+    const counted = upto.trim() ? upto.trim().split(/\s+/).length - 1 : -1;
+    wordIdx = counted;
+    const el = document.getElementById("s" + audioId);
+    if (el) paintWord(el);
+  };
+  utter.onend = () => {
+    if (intentionalStop) return;
+    if (audioId + 1 < book.sentences.length) {
+      audioId++; wordIdx = -1; savePos();
+      if (following) { const p = pageOf(audioId); if (p !== viewPage) { viewPage = p; } }
+      render();
+      speak();
+    } else { isPlaying = false; isPaused = false; render(); }
+  };
+  isPlaying = true; isPaused = false;
+  render();
+  speechSynthesis.speak(utter);
+}
+
+function pause() { speechSynthesis.pause(); isPaused = true; isPlaying = false; render(); }
+function resume() { speechSynthesis.resume(); isPaused = false; isPlaying = true; render(); }
+function stopSpeak() { intentionalStop = true; speechSynthesis.cancel(); isPlaying = false; isPaused = false; }
+
+function savePos() { localStorage.setItem(LS.pos, audioId); }
+
+/* ------------------------------ swipe ---------------------------------- */
+(function attachSwipe() {
+  let x0 = null, y0 = null, t0 = 0;
+  const main = $("main");
+  main.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); }, { passive: true });
+  main.addEventListener("touchend", e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 1.6 * Math.abs(dy) && Date.now() - t0 < 600) swipe(dx < 0 ? +1 : -1);
+    x0 = null;
+  }, { passive: true });
+})();
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") swipe(+1);
+  else if (e.key === "ArrowLeft") swipe(-1);
+  else if (e.key === " ") { e.preventDefault(); pressPlay(); }
+});
+
+/* ------------------------------ UI wiring ------------------------------- */
+$("play").onclick = pressPlay;
+$("prevSent").onclick = () => stepSentence(false);
+$("nextSent").onclick = () => stepSentence(true);
+$("prevEdge").onclick = () => swipe(-1);
+$("nextEdge").onclick = () => swipe(+1);
+$("backpill").onclick = goAudioPill;
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () =>
+  document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")));
+$("tocBtn").onclick = () => {
+  const b = $("tocBody"); b.innerHTML = "";
+  let lastPart = "";
+  for (const c of book.chapters) {
+    if (c.part !== lastPart) {
+      lastPart = c.part;
+      const g = document.createElement("div"); g.className = "group";
+      g.textContent = c.part.toUpperCase(); b.appendChild(g);
+    }
+    const it = document.createElement("div"); it.className = "item";
+    const t = document.createElement("div"); t.className = "t";
+    t.textContent = c.title || (c.part === "workbook" ? "Lesson " + c.no : "Chapter " + c.no || "Introduction");
+    const s = document.createElement("div"); s.className = "s";
+    s.textContent = "sentence " + (c.first + 1) + " · page " + (pageOf(c.first) + 1);
+    it.appendChild(t); it.appendChild(s);
+    it.onclick = () => { document.querySelectorAll(".sheet").forEach(x => x.classList.remove("open")); tapSentence(c.first); };
+    b.appendChild(it);
+  }
+  $("tocSheet").classList.add("open");
+};
+$("setBtn").onclick = () => {
+  refreshVoices();
+  $("rate").value = +(localStorage.getItem(LS.rate) || 1);
+  $("rateVal").textContent = $("rate").value + "×";
+  $("setSheet").classList.add("open");
+};
+$("voiceSel").onchange = e => {
+  localStorage.setItem(LS.voice, e.target.value);
+  if (isPlaying) speak();
+};
+$("rate").oninput = e => {
+  $("rateVal").textContent = e.target.value + "×";
+  localStorage.setItem(LS.rate, e.target.value);
+  if (isPlaying) speak();
+};
+
+/* ---------------------------- book loading ----------------------------- */
+function showOverlay(icon, title, text, opts) {
+  $("ovIcon").innerHTML = icon;
+  $("ovTitle").textContent = title;
+  $("ovText").innerHTML = text;
+  $("ovBtns").style.display = opts && opts.buttons ? "block" : "none";
+  const bar = $("ovBar");
+  if (opts && opts.progress) { bar.style.display = "block"; bar.value = 0; }
+  else bar.style.display = "none";
+  $("overlay").classList.add("show");
+}
+function setProgress(p) { $("ovBar").value = p; }
+function hideOverlay() { $("overlay").classList.remove("show"); }
+
+function bootWith(parsedBook) {
+  book = parsedBook;
+  audioId = Math.min(audioId, book.sentences.length - 1);
+  wordIdx = -1; viewPage = pageOf(audioId); following = true;
+  render();
+}
+
+function loadCached() {
+  try {
+    const j = localStorage.getItem(LS.book);
+    if (j) { bootWith(JSON.parse(j)); return true; }
+  } catch (e) {}
+  return false;
+}
+
+async function loadFullBook() {
+  showOverlay("&#8681;", "Downloading the book", "Fetching the public-domain Urtext (~4&nbsp;MB) from archive.org…", { progress: true });
+  try {
+    const res = await fetch(URTEXT_URL);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const total = +res.headers.get("Content-Length") || 0;
+    const reader = res.body.getReader();
+    const chunks = []; let got = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (total) setProgress(Math.min(95, got / total * 100));
+    }
+    const text = await new Blob(chunks).text();
+    setProgress(100);
+    showOverlay("&#9998;", "Parsing", "Splitting the book into chapters, paragraphs and sentences…");
+    await new Promise(r => setTimeout(r, 30));       // let UI paint
+    const parsed = parse(await text);
+    try { localStorage.setItem(LS.book, JSON.stringify(parsed)); } catch (e) { /* may exceed quota; fine */ }
+    bootWith(parsed);
+    hideOverlay();
+  } catch (err) {
+    showOverlay("&#9888;", "Download failed", (err.message || "network error") +
+      "<br><br>If archive.org is unreachable, the excerpt still works fully offline.", { buttons: true });
+    $("ovPrimary").textContent = "Retry";
+    $("ovPrimary").onclick = loadFullBook;
+  }
+}
+
+function useSample() {
+  const parsed = parse(SAMPLE);
+  try { localStorage.removeItem(LS.book); } catch (e) {}
+  bootWith(parsed);
+  hideOverlay();
+}
+
+$("ovPrimary").onclick = loadFullBook;
+$("ovUseSample").onclick = useSample;
+$("loadFull").onclick = () => { document.querySelectorAll(".sheet").forEach(x => x.classList.remove("open")); loadFullBook(); };
+$("reloadBook").onclick = () => { document.querySelectorAll(".sheet").forEach(x => x.classList.remove("open")); useSample(); };
+
+/* ------------------------------- start --------------------------------- */
+refreshVoices();
+if (!loadCached()) {
+  showOverlay("&#128218;", "ACIM Reader",
+    "A Course in Miracles &mdash; Urtext edition, public domain. Read aloud with live highlighting: tap a sentence to jump the audio there, swipe to browse while it keeps playing.",
+    { buttons: true });
+  $("ovPrimary").onclick = loadFullBook;
+}
+window.addEventListener("beforeunload", savePos);
+</script>
+</body>
+</html>
