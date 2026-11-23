@@ -1,48 +1,52 @@
 import SwiftUI
 
-/// A three-slot page carousel: exactly the previous, current and next page
-/// exist at any time, so even a 1000+ page book stays cheap.
+/// Horizontal page browsing.
+///
+/// This used to be a three-slot `TabView` that snapped itself back to the
+/// middle after every swipe. Resetting the slot while the transition was still
+/// animating raced with the page change, so one flick could advance two pages.
+///
+/// Instead this is one paging scroll view over a lazy row of all pages: the
+/// system does the paging, `scrollPosition` is the single source of truth, and
+/// only the pages near the viewport are ever built — a 2000-page book stays
+/// cheap. Browsing here never touches the audio position; that is the whole
+/// point of the gesture.
 struct CarouselPager<Page: View>: View {
     let pageCount: Int
     let page: Int
     let didSwipe: (Int) -> Void
     @ViewBuilder let makePage: (Int) -> Page
 
-    /// 0 = previous slot, 1 = visible slot, 2 = next slot.
-    @State private var slot = 1
+    @State private var position: Int?
 
     var body: some View {
-        Group {
-            if pageCount <= 1 {
-                makePage(page)
-            } else {
-                TabView(selection: $slot) {
-                    makePage(neighbour(-1)).tag(0)
-                    makePage(page).tag(1)
-                    makePage(neighbour(+1)).tag(2)
+        GeometryReader { geo in
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(0..<max(pageCount, 1), id: \.self) { index in
+                        makePage(index)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                            .id(index)
+                    }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .onChange(of: slot) { _, new in
-                    guard new != 1 else { return }
-                    handleSwipe(new)
-                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $position, anchor: .center)
+            .scrollIndicators(.hidden)
+            .onAppear { position = page }
+            // Driven from outside: follow-the-audio, the contents list,
+            // "back to page N".
+            .onChange(of: page) { _, newPage in
+                guard position != newPage else { return }
+                withAnimation(.easeInOut(duration: 0.3)) { position = newPage }
+            }
+            // Driven by the finger.
+            .onChange(of: position) { _, newPosition in
+                guard let newPosition, newPosition != page else { return }
+                didSwipe(newPosition)
             }
         }
-    }
-
-    private func neighbour(_ delta: Int) -> Int {
-        min(max(page + delta, 0), pageCount - 1)
-    }
-
-    private func handleSwipe(_ new: Int) {
-        let target = min(max(page + (new == 2 ? 1 : -1), 0), pageCount - 1)
-        let unchanged = (new == 2 && target == page && page == pageCount - 1)
-            || (new == 0 && target == page && page == 0)
-        // snap back to the middle slot without animating
-        slot = 1
-        if unchanged {
-            return // tried to swipe past the first/last page
-        }
-        didSwipe(target)
     }
 }

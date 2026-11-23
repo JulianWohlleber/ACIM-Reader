@@ -1,278 +1,244 @@
 import Foundation
 import AVFoundation
+import Combine
 
-/// The audio engine: speaks the book sentence by sentence with the best
-/// available system voice, publishes the current sentence + word range for the
-/// karaoke highlighting, and supports seeking, pausing and voice selection.
+/// Reads the book aloud with Kokoro-82M running on the phone.
 ///
-/// Sentence-granular playback has two big benefits: the current sentence is
-/// always exactly known (no fragile time offsets) and `willSpeakRange...`
-/// gives word-level highlighting for free.
+/// One sentence is one synthesised clip, so the sentence index *is* the audio
+/// position: tapping, resuming and follow-the-audio cannot drift. While a clip
+/// plays, the next one is already being synthesised, so sentences run on
+/// without a gap.
 @MainActor
 final class AudioReader: NSObject, ObservableObject {
 
-    // MARK: Published state
-
-    /// The voice is speaking (not necessarily on the *same sentence* as the view).
     @Published private(set) var isPlaying = false
-    /// Playback was started but is currently paused.
     @Published private(set) var isPaused = false
-    /// Global sentence id of the audio position.
+    /// True while a sentence is being synthesised and there is nothing to hear yet.
+    @Published private(set) var isPreparing = false
     @Published private(set) var currentSentenceID = 0
-    /// Character range within the current sentence being spoken (word karaoke).
     @Published private(set) var currentWordRange: NSRange?
-    /// Utterance rate (0.4 ... 0.65 feels natural for book narration).
+    @Published private(set) var engineError: String?
+
     @Published var rate: Double {
         didSet { UserDefaults.standard.set(rate, forKey: Keys.rate) }
     }
-    /// Identifier of the selected voice (`AVSpeechSynthesisVoice(identifier:)`).
-    @Published var voiceIdentifier: String? {
-        didSet { UserDefaults.standard.set(voiceIdentifier, forKey: Keys.voice) }
+
+    @Published var voice: Voice {
+        didSet {
+            UserDefaults.standard.set(voice.rawValue, forKey: Keys.voice)
+            guard voice != oldValue else { return }
+            clips.removeAll()
+            if isBusy { restartCurrentSentence() }
+        }
     }
 
-    private struct Keys {
+    private enum Keys {
         static let rate = "acim.audioRate"
         static let voice = "acim.audioVoice"
         static let position = "acim.lastPosition"
     }
 
-    // MARK: Private
-
-    private let synthesizer = AVSpeechSynthesizer()
+    private let synthesizer = KokoroSynthesizer()
+    private let player = SpeechPlayer()
     private var book: ACIMBook?
-    /// True while we cancelled on purpose (seek/stop) — ignore stale callbacks.
-    private var intentionalCancel = false
-
-    // MARK: Init
+    private var timings: [WordTiming] = []
+    private var clips: [Int: KokoroSynthesizer.Clip] = [:]
+    private var ticker: AnyCancellable?
+    private var speakTask: Task<Void, Never>?
+    private var prefetchTask: Task<Void, Never>?
 
     override init() {
         let storedRate = UserDefaults.standard.object(forKey: Keys.rate) as? Double
-        rate = storedRate ?? 0.5
-        voiceIdentifier = UserDefaults.standard.string(forKey: Keys.voice)
-        storedPosition = UserDefaults.standard.integer(forKey: Keys.position)
+        rate = storedRate ?? 1.0
+        voice = Voice(rawValue: UserDefaults.standard.string(forKey: Keys.voice) ?? "") ?? .softWoman
         super.init()
-        synthesizer.delegate = self
+
+        currentSentenceID = UserDefaults.standard.integer(forKey: Keys.position)
+        prepareAudioSession()
+        player.onFinished = { [weak self] in self?.advance() }
     }
-
-    private var storedPosition: Int = 0
-
-    // MARK: Configuration
 
     func attach(book: ACIMBook) {
         self.book = book
-        // restore last position if valid
-        if book.sentences.indices.contains(storedPosition) {
-            currentSentenceID = storedPosition
-        } else {
-            currentSentenceID = 0
-            storedPosition = currentSentenceID
-        }
-        // default to best voice if none chosen
-        if voiceIdentifier == nil || AVSpeechSynthesisVoice(identifier: voiceIdentifier ?? "") == nil {
-            voiceIdentifier = Self.bestVoice()?.identifier
+        currentSentenceID = min(max(0, currentSentenceID), max(0, book.sentenceCount - 1))
+        if let missing = Self.missingVoiceFiles, !missing.isEmpty {
+            engineError = "Voice model missing: \(missing.joined(separator: ", ")). Run Tools/fetch-voices.sh and rebuild."
         }
     }
 
-    // MARK: Voices
-
-    struct VoiceInfo: Identifiable {
-        let id: String          // AVSpeechSynthesisVoice identifier
-        let name: String
-        let language: String
-        let quality: Int        // AVSpeechSynthesisVoiceQuality raw value
-        let qualityName: String
-    }
-
-    /// English voices, best quality first — premium Siri voices read books
-    /// beautifully; enhanced voices are the second choice.
-    static var englishVoices: [VoiceInfo] {
-        AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.language.hasPrefix("en") }
-            .map { v in
-                VoiceInfo(id: v.identifier,
-                          name: v.name,
-                          language: v.language,
-                          quality: v.quality.rawValue,
-                          qualityName: qualityName(v.quality))
-            }
-            .sorted { l, r in
-                // premium first, then US/GB English, then alphabetically
-                if l.quality != r.quality { return l.quality > r.quality }
-                let lPreferred = l.language == "en-US" || l.language == "en-GB"
-                let rPreferred = r.language == "en-US" || r.language == "en-GB"
-                if lPreferred != rPreferred { return lPreferred }
-                return l.name < r.name
-            }
-    }
-
-        static func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
-        switch quality {
-        case .premium: return "Premium"
-        case .enhanced: return "Enhanced"
-        case .default: return "Default"
-        default: return "Default"
-        }
-    }
-
-    static func bestVoice() -> AVSpeechSynthesisVoice? {
-        englishVoices.first.flatMap { AVSpeechSynthesisVoice(identifier: $0.id) }
-    }
-
-    var activeVoice: AVSpeechSynthesisVoice? {
-        AVSpeechSynthesisVoice(identifier: voiceIdentifier ?? "") ?? Self.bestVoice()
-    }
-
-    // MARK: Transport
+    static var missingVoiceFiles: [String]? { KokoroSynthesizer.missingResources() }
 
     var isBusy: Bool { isPlaying || isPaused }
 
-    /// Start playback at the current position (or resume after pause).
+    // MARK: - Transport
+
     func play() {
-        guard let book, book.sentenceCount > 0 else { return }
-        prepareAudioSession()
-        if isPaused, synthesizer.isPaused {
-            synthesizer.continueSpeaking()
+        guard book != nil else { return }
+        if isPaused {
+            player.resume()
             isPaused = false
             isPlaying = true
+            startTicking()
             return
         }
-        speakCurrentSentence()
+        guard !isPlaying else { return }
+        speak(currentSentenceID)
     }
 
     func pause() {
         guard isPlaying else { return }
-        synthesizer.pauseSpeaking(atBoundary: .immediate)
+        player.pause()
+        ticker = nil
         isPaused = true
         isPlaying = false
     }
 
     func stop() {
-        intentionalCancel = true
-        synthesizer.stopSpeaking(atBoundary: .immediate)
+        speakTask?.cancel()
+        prefetchTask?.cancel()
+        player.stop()
+        ticker = nil
         isPlaying = false
         isPaused = false
+        currentWordRange = nil
     }
 
-    /// Standard play/pause toggle.
     func togglePlayPause() {
         if isPlaying { pause() } else { play() }
     }
 
-    /// Jump the audio position to a sentence.
-    /// If playback was running (or paused), it continues from the new spot.
+    /// Move the audio position. If it was playing or paused, it continues there.
     func seek(to sentenceID: Int) {
-        let wasActive = isPlaying || isPaused
-        if sentenceID != currentSentenceID {
-            intentionalCancel = true
-            synthesizer.stopSpeaking(atBoundary: .immediate)
-            isPlaying = false
-            isPaused = false
-            currentSentenceID = min(max(0, sentenceID), max(0, (book?.sentenceCount ?? 1) - 1))
-            currentWordRange = nil
-            persistPosition()
-        }
-        if wasActive {
-            play()
-        }
-    }
-
-    /// Jump to the next / previous sentence without changing play state.
-    func stepSentence(forward: Bool) {
         guard let book else { return }
-        let target = currentSentenceID + (forward ? 1 : -1)
-        if book.sentences.indices.contains(target) {
-            seek(to: target)
+        let target = min(max(0, sentenceID), max(0, book.sentenceCount - 1))
+        let wasActive = isBusy
+        stop()
+        currentSentenceID = target
+        persistPosition()
+        if wasActive { speak(target) }
+    }
+
+    func stepSentence(forward: Bool) {
+        seek(to: currentSentenceID + (forward ? 1 : -1))
+    }
+
+    private func restartCurrentSentence() {
+        let wasActive = isBusy
+        let id = currentSentenceID
+        stop()
+        if wasActive { speak(id) }
+    }
+
+    // MARK: - Speaking
+
+    private func speak(_ sentenceID: Int) {
+        guard let book, let sentence = book.sentence(withID: sentenceID) else { return }
+        speakTask?.cancel()
+        currentSentenceID = sentenceID
+        currentWordRange = nil
+        persistPosition()
+
+        speakTask = Task { [weak self] in
+            guard let self else { return }
+            self.isPreparing = self.clips[sentenceID] == nil
+            // A cancelled task must not leave the spinner spinning for ever.
+            defer { self.isPreparing = false }
+            do {
+                let clip = try await self.clip(for: sentenceID, text: sentence.text)
+                guard !Task.isCancelled else { return }
+                self.timings = WordTiming.plan(for: sentence.text, duration: clip.duration)
+                try self.player.play(samples: clip.samples, sampleRate: clip.sampleRate)
+                self.isPlaying = true
+                self.isPaused = false
+                self.engineError = nil
+                self.startTicking()
+                self.prefetch(sentenceID + 1)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.isPlaying = false
+                self.engineError = error.localizedDescription
+            }
         }
     }
 
-    // MARK: Internals
+    private func clip(for sentenceID: Int, text: String) async throws -> KokoroSynthesizer.Clip {
+        if let cached = clips[sentenceID] { return cached }
+        let voice = self.voice
+        let speed = Float(rate)
+        let made = try await synthesizer.speak(text, voice: voice, speed: speed)
+        clips[sentenceID] = made
+        trimCache(around: sentenceID)
+        return made
+    }
 
-    private func speakCurrentSentence() {
-        guard let book, let sentence = book.sentence(withID: currentSentenceID) else {
-            stop()
-            return
+    /// Synthesise the next sentence while this one is still being spoken.
+    private func prefetch(_ sentenceID: Int) {
+        guard let book, let sentence = book.sentence(withID: sentenceID),
+              clips[sentenceID] == nil else { return }
+        prefetchTask?.cancel()
+        let voice = self.voice
+        let speed = Float(rate)
+        prefetchTask = Task { [weak self] in
+            guard let self else { return }
+            if let made = try? await self.synthesizer.speak(sentence.text, voice: voice, speed: speed) {
+                guard !Task.isCancelled else { return }
+                self.clips[sentenceID] = made
+                self.trimCache(around: sentenceID)
+            }
         }
-        let utterance = AVSpeechUtterance(string: sentence.text)
-        utterance.voice = activeVoice
-        utterance.rate = Float(rate)
-        utterance.pitchMultiplier = 1.0
-        utterance.postUtteranceDelay = 0.15
-        intentionalCancel = false
-        synthesizer.speak(utterance)
-        isPlaying = true
-        isPaused = false
-        persistPosition()
+    }
+
+    /// Clips are large; keep only what is about to be heard.
+    private func trimCache(around sentenceID: Int) {
+        let keep = Set([sentenceID - 1, sentenceID, sentenceID + 1, currentSentenceID, currentSentenceID + 1])
+        clips = clips.filter { keep.contains($0.key) }
     }
 
     private func advance() {
         guard let book else { return }
         let next = currentSentenceID + 1
         guard next < book.sentenceCount else {
-            // End of book.
             stop()
             return
         }
-        currentSentenceID = next
-        currentWordRange = nil
-        speakCurrentSentence()
+        speak(next)
     }
 
+    // MARK: - The word marker
+
+    private func startTicking() {
+        ticker = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self, self.isPlaying else { return }
+                self.currentWordRange = WordTiming.word(at: self.player.elapsed, in: self.timings)
+            }
+    }
+
+    // MARK: - Housekeeping
+
     private func persistPosition() {
-        storedPosition = currentSentenceID
         UserDefaults.standard.set(currentSentenceID, forKey: Keys.position)
     }
 
     private func prepareAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .interruptPlayback])
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
             try session.setActive(true, options: [])
         } catch {
-            // Non-fatal: speech still works in most conditions.
-        }
-    }
-}
-
-// MARK: - AVSpeechSynthesizerDelegate
-
-extension AudioReader: AVSpeechSynthesizerDelegate {
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            guard self.isPlaying else { return }
-            self.advance()
+            // Non-fatal: playback still works in most conditions.
         }
     }
 
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       willSpeakRangeOfSpeechString characterRange: NSRange,
-                                       utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            self.currentWordRange = characterRange
-        }
-    }
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            guard !self.intentionalCancel, self.isPlaying else { return }
-            // Unexpected cancel (e.g. route change): keep position, allow replay.
-            self.isPlaying = false
-        }
-    }
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didPause utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            // state already handled by `pause()`
-        }
-    }
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didContinue utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            // state already handled by `play()`
+    /// Speak a short line in a voice so it can be auditioned before choosing.
+    func preview(_ voice: Voice) {
+        Task { [weak self] in
+            guard let self else { return }
+            guard let clip = try? await self.synthesizer.speak(Voice.sample, voice: voice, speed: Float(self.rate))
+            else { return }
+            guard !self.isPlaying else { return }
+            try? self.player.play(samples: clip.samples, sampleRate: clip.sampleRate)
         }
     }
 }

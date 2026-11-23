@@ -25,35 +25,50 @@ struct RootView: View {
 
 private struct WelcomeView: View {
     @EnvironmentObject private var library: BookLibrary
+    @Environment(\.colorScheme) private var scheme
+    private var theme: RamsTheme { RamsTheme.current(scheme) }
     @State private var importing = false
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
-            Image(systemName: "book.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(Color.accentColor)
             Text("ACIM Reader")
-                .font(.largeTitle.bold())
+                .font(.ramsBold(32))
+                .foregroundStyle(theme.inkC)
+                .padding(.bottom, Grid.x(2))
             Text("A Course in Miracles — Urtext Edition\nread aloud, sentence by sentence.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.rams(16))
+                .foregroundStyle(theme.inkMutedC)
+                .multilineTextAlignment(.leading)
+                .padding(.bottom, Grid.x(4))
+            Rectangle().fill(theme.hairlineC).frame(height: 0.5)
+                .padding(.bottom, Grid.x(4))
 
             Button {
                 library.download()
             } label: {
-                Label("Download the book (about 4 MB)", systemImage: "arrow.down.circle.fill")
-                    .font(.headline)
-                    .padding()
-                    .frame(maxWidth: 320)
-                    .background(Color.accentColor, in: Capsule())
-                    .foregroundStyle(.white)
+                Text("Download the book (about 4 MB)")
+                    .font(.ramsMedium(15))
+                    .foregroundStyle(theme.paperC)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Grid.x(7))
+                    .background(theme.inkC)
             }
-            Button("Import a .txt file instead") { importing = true }
-                .font(.subheadline)
+            .buttonStyle(.plain)
+
+            Button { importing = true } label: {
+                Text("Import a .txt file instead")
+                    .panelLabel(theme)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Grid.x(7))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, Grid.x(1))
             Spacer()
         }
+        .padding(.horizontal, Grid.margin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.paperC.ignoresSafeArea())
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText]) { result in
             if case .success(let url) = result {
                 Task { await library.importTextFile(from: url, securityScoped: true) }
@@ -67,18 +82,28 @@ private struct WelcomeView: View {
 private struct DownloadView: View {
     let progress: Double
     var parsing = false
+    @Environment(\.colorScheme) private var scheme
+    private var theme: RamsTheme { RamsTheme.current(scheme) }
 
     var body: some View {
-        VStack(spacing: 16) {
-            ProgressView(value: parsing ? nil : progress)
-                .progressViewStyle(.linear)
-                .frame(maxWidth: 280)
+        VStack(alignment: .leading, spacing: Grid.x(2)) {
             Text(parsing
                  ? "Preparing the book…"
                  : "Downloading the book… \(Int(progress * 100))%")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.ramsMedium(15))
+                .foregroundStyle(theme.inkC)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(theme.hairlineC)
+                    Rectangle().fill(theme.accentC)
+                        .frame(width: geo.size.width * CGFloat(min(max(parsing ? 1 : progress, 0), 1)))
+                }
+            }
+            .frame(height: 2)
         }
+        .padding(.horizontal, Grid.margin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.paperC.ignoresSafeArea())
     }
 }
 
@@ -86,26 +111,49 @@ private struct DownloadView: View {
 
 private struct FailureView: View {
     @EnvironmentObject private var library: BookLibrary
+    @Environment(\.colorScheme) private var scheme
+    private var theme: RamsTheme { RamsTheme.current(scheme) }
     let message: String
     @State private var importing = false
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer()
             Text("Download failed")
-                .font(.title3.bold())
+                .font(.ramsBold(24))
+                .foregroundStyle(theme.inkC)
+                .padding(.bottom, Grid.x(2))
             Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Retry") { library.download() }
-                .buttonStyle(.borderedProminent)
-            Button("Import a .txt file instead") { importing = true }
-                .font(.subheadline)
+                .font(.rams(16))
+                .foregroundStyle(theme.inkMutedC)
+                .multilineTextAlignment(.leading)
+                .padding(.bottom, Grid.x(4))
+            Rectangle().fill(theme.hairlineC).frame(height: 0.5)
+                .padding(.bottom, Grid.x(4))
+
+            Button { library.download() } label: {
+                Text("Retry")
+                    .font(.ramsMedium(15))
+                    .foregroundStyle(theme.paperC)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Grid.x(7))
+                    .background(theme.inkC)
+            }
+            .buttonStyle(.plain)
+
+            Button { importing = true } label: {
+                Text("Import a .txt file instead")
+                    .panelLabel(theme)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Grid.x(7))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, Grid.x(1))
+            Spacer()
         }
+        .padding(.horizontal, Grid.margin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.paperC.ignoresSafeArea())
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText]) { result in
             if case .success(let url) = result {
                 Task { await library.importTextFile(from: url, securityScoped: true) }

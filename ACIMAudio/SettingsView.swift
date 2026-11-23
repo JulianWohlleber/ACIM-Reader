@@ -1,79 +1,100 @@
 import SwiftUI
 
-/// Voice selection, speed, and book source management.
+/// Voice and speed. Three voices, nothing else to decide.
 struct SettingsView: View {
     @ObservedObject var audio: AudioReader
     @Environment(\.dismiss) private var dismiss
-
-    @State private var voices: [AudioReader.VoiceInfo] = []
+    @Environment(\.colorScheme) private var scheme
+    private var theme: RamsTheme { RamsTheme.current(scheme) }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        Label("Reading speed", systemImage: "speedometer")
-                        Spacer()
-                        Text("\(String(format: "%.2fx", normalizedRate))")
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(value: Binding(
-                        get: { Double(audio.rate) },
-                        set: { newValue in audio.rate = newValue }),
-                           in: 0.4...0.65, step: 0.01)
-                    Text("Tap a sentence in the book to hear a preview of the voice.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Playback")
+        VStack(spacing: 0) {
+            HStack {
+                Text("Voice")
+                    .font(.ramsMedium(17))
+                    .foregroundStyle(theme.inkC)
+                Spacer()
+                Button { dismiss() } label: {
+                    Text("Done").panelLabel(theme).frame(height: Grid.x(5))
                 }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Grid.margin)
+            .frame(height: Grid.x(7))
+            .hairline(theme)
 
-                Section("Voice") {
-                    if voices.isEmpty {
-                        Text("No English voices installed. Install a Siri voice in Settings → Accessibility → Spoken Content → Voices.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(voices) { voice in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Voice.allCases) { voice in
                         Button {
-                            audio.voiceIdentifier = voice.id
+                            audio.voice = voice
+                            audio.preview(voice)
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(voice.name)
-                                        .foregroundStyle(.primary)
-                                    Text("\(voice.language) · \(voice.qualityName) quality")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if audio.voiceIdentifier == voice.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                            }
+                            voiceRow(voice)
                         }
+                        .buttonStyle(.plain)
                     }
+
+                    Text("Speed")
+                        .panelLabel(theme)
+                        .padding(.horizontal, Grid.margin)
+                        .padding(.top, Grid.x(4))
+                        .padding(.bottom, Grid.x(1))
+
+                    HStack(spacing: Grid.x(2)) {
+                        Slider(value: $audio.rate, in: 0.7...1.4)
+                            .tint(theme.inkC)
+                        Text(String(format: "%.2f", audio.rate))
+                            .font(.ramsMedium(15))
+                            .foregroundStyle(theme.inkC)
+                            .monospacedDigit()
+                            .frame(width: Grid.x(6), alignment: .trailing)
+                    }
+                    .padding(.horizontal, Grid.margin)
+                    .padding(.bottom, Grid.x(3))
+                    .hairline(theme)
+
+                    if let error = audio.engineError {
+                        Text(error)
+                            .font(.rams(13))
+                            .foregroundStyle(theme.accentC)
+                            .padding(.horizontal, Grid.margin)
+                            .padding(.top, Grid.x(3))
+                    }
+
+                    Text("Kokoro‑82M · Apache‑2.0 · runs on this device")
+                        .panelLabel(theme)
+                        .padding(.horizontal, Grid.margin)
+                        .padding(.top, Grid.x(4))
                 }
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .onAppear {
-                voices = AudioReader.englishVoices
-            }
-            .onReceive(audio.$voiceIdentifier) { _ in
-                voices = AudioReader.englishVoices
             }
         }
+        .background(theme.paperC.ignoresSafeArea())
     }
 
-    /// AVSpeechUtterance rate 0.5 == "1.0x" normal speech.
-    private var normalizedRate: Double {
-        Double(audio.rate) / 0.5
+    private func voiceRow(_ voice: Voice) -> some View {
+        let selected = audio.voice == voice
+        return HStack(alignment: .firstTextBaseline, spacing: Grid.x(2)) {
+            VStack(alignment: .leading, spacing: Grid.x(0.5)) {
+                Text(voice.title)
+                    .font(.ramsMedium(17))
+                    .foregroundStyle(selected ? theme.accentC : theme.inkC)
+                Text(voice.describedAs)
+                    .font(.rams(14))
+                    .foregroundStyle(theme.inkMutedC)
+                Text(voice.modelName)
+                    .panelLabel(theme)
+            }
+            Spacer(minLength: 0)
+            Rectangle()
+                .fill(selected ? theme.accentC : .clear)
+                .frame(width: 7, height: 7)
+                .offset(y: 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Grid.margin)
+        .padding(.vertical, Grid.x(2))
+        .contentShape(Rectangle())
+        .hairline(theme)
     }
 }

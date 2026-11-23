@@ -1,141 +1,136 @@
 import SwiftUI
+import UIKit
 
-/// One "page": all sentences of the page, grouped back into their
-/// paragraphs, each sentence individually tappable and individually
-/// highlightable while it is being spoken.
-struct PageView: View {
-    let book: ACIMBook
-    let pageIndex: Int
-    @ObservedObject var audio: AudioReader
-    let onTapSentence: (Int) -> Void
-
-    private struct ParagraphGroup: Identifiable {
-        let id: Int          // paragraph id
-        let sentences: [Sentence]
-    }
-
-    /// Paragraphs that have at least one sentence on this page,
-    /// in reading order, with the subset of sentences shown.
-    private var visibleParagraphs: [ParagraphGroup] {
-        let ids = book.sentenceIDs(onPage: pageIndex)
-        guard ids.count > 0 else { return [] }
-        var groups: [ParagraphGroup] = []
-        var currentID: Int? = nil
-        var currentSentences: [Sentence] = []
-        func finalize() {
-            if let cid = currentID, !currentSentences.isEmpty {
-                groups.append(ParagraphGroup(id: cid, sentences: currentSentences))
-            }
-            currentID = nil
-            currentSentences = []
-        }
-        for id in ids {
-            guard let sentence = book.sentence(withID: id) else { continue }
-            if sentence.paragraphID == currentID, book.paragraphs.indices.contains(sentence.paragraphID) {
-                currentSentences.append(sentence)
-            } else {
-                finalize()
-                if book.paragraphs.indices.contains(sentence.paragraphID) {
-                    currentID = sentence.paragraphID
-                    currentSentences = [sentence]
-                }
-            }
-        }
-        finalize()
-        return groups
-    }
-
-    var body: some View {
-        ScrollView {
-            ScrollViewReader { proxy in
-                VStack(alignment: .leading, spacing: 18) {
-                    if pageIndex == 0 {
-                        titleBlock
-                    }
-                    ForEach(visibleParagraphs) { group in
-                        ParagraphFlowView(sentences: group.sentences,
-                                          currentSentenceID: audio.currentSentenceID,
-                                          currentWordRange: audio.currentWordRange,
-                                          onTap: onTapSentence)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .id("page-\(pageIndex)")
-                .onChange(of: audio.currentSentenceID) { _, newValue in
-                    if book.page(ofSentence: newValue) == pageIndex {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo("sentence-\(newValue)", anchor: .center)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("A Course in Miracles")
-                .font(.title2.bold())
-            Text("Urtext Edition · read aloud")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 8)
-        }
-    }
+extension NSAttributedString.Key {
+    /// Carries the global sentence id on every glyph of that sentence, so a tap
+    /// anywhere in the running text resolves to exactly one sentence — the
+    /// audio position.
+    static let acimSentence = NSAttributedString.Key("acimSentence")
 }
 
-/// A paragraph rendered as a flow of sentence chips.
-private struct ParagraphFlowView: View {
-    let sentences: [Sentence]
+/// One page, drawn once and never scrolled.
+///
+/// The page was measured by `ChapterPaginator` to fit this exact box, so the
+/// text ends where the page ends. Colour is applied here rather than during
+/// pagination, because the reading position changes many times a second while
+/// the page breaks do not.
+struct PageTextView: UIViewRepresentable {
+    let page: ChapterPaginator.Page
+    /// Exactly the box the paginator measured against, so what was measured is
+    /// what gets drawn. Without this the text view falls back to its intrinsic
+    /// width and the lines run off the page.
+    let box: CGSize
     let currentSentenceID: Int
     let currentWordRange: NSRange?
+    let fontSize: CGFloat
+    let theme: RamsTheme
     let onTap: (Int) -> Void
 
-    var body: some View {
-        FlowLayout(spacing: 7) {
-            ForEach(sentences) { sentence in
-                SentenceView(sentence: sentence,
-                             isCurrent: sentence.id == currentSentenceID,
-                             wordRange: sentence.id == currentSentenceID ? currentWordRange : nil)
-                    .onTapGesture { onTap(sentence.id) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isScrollEnabled = false
+        view.isSelectable = true
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.textContainer.lineBreakMode = .byWordWrapping
+
+        let tap = UITapGestureRecognizer(target: context.coordinator,
+                                         action: #selector(Coordinator.handleTap(_:)))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
+        context.coordinator.textView = view
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onTap = onTap
+        view.textContainer.size = box
+
+        let holdsCursor = page.sentenceIDs.contains(currentSentenceID)
+        let key = holdsCursor
+            ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(theme.isDark)"
+            : "i:\(page.chapterID):\(page.id):\(theme.isDark)"
+        guard key != coordinator.renderedKey else { return }
+        coordinator.renderedKey = key
+        view.attributedText = coloured()
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? box.width, height: proposal.height ?? box.height)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onTap: onTap) }
+
+    final class Coordinator: NSObject {
+        var onTap: (Int) -> Void
+        var renderedKey = ""
+        weak var textView: UITextView?
+
+        init(onTap: @escaping (Int) -> Void) { self.onTap = onTap }
+
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard let view = textView,
+                  let text = view.attributedText, text.length > 0,
+                  let position = view.closestPosition(to: gesture.location(in: view)) else { return }
+            let offset = view.offset(from: view.beginningOfDocument, to: position)
+            let index = min(max(0, offset), text.length - 1)
+            if let id = text.attribute(.acimSentence, at: index, effectiveRange: nil) as? Int {
+                onTap(id)
             }
         }
     }
-}
 
-/// One sentence. Three visual states:
-/// - normal book text
-/// - current sentence: soft accent background
-/// - while spoken: the active word is tinted
-struct SentenceView: View {
-    let sentence: Sentence
-    let isCurrent: Bool
-    let wordRange: NSRange?
+    /// Everything not being read sits back in grey; the live sentence is
+    /// full-strength ink; the single word being spoken is the only orange on
+    /// the screen.
+    private func coloured() -> NSAttributedString {
+        let out = NSMutableAttributedString(attributedString: page.text)
+        let whole = NSRange(location: 0, length: out.length)
+        out.addAttribute(.foregroundColor, value: theme.inkMuted, range: whole)
 
-    var body: some View {
-        Group {
-            if isCurrent, let wordRange, wordRange.length > 0,
-               let range = Range(wordRange, in: sentence.text),
-               range.upperBound <= sentence.text.endIndex,
-               range.lowerBound < range.upperBound {
-                (Text(String(sentence.text[..<range.lowerBound]))
-                 + Text(String(sentence.text[range])).foregroundColor(.accentColor).weight(.bold)
-                 + Text(String(sentence.text[range.upperBound...])))
-                    .font(.body)
-            } else {
-                Text(sentence.text)
-                    .font(.body)
+        var sentenceStart: Int?
+        page.text.enumerateAttribute(.acimSentence, in: whole) { value, range, _ in
+            guard let id = value as? Int, id == currentSentenceID else { return }
+            out.addAttribute(.foregroundColor, value: theme.ink, range: range)
+            if sentenceStart == nil { sentenceStart = range.location }
+        }
+
+        if let start = sentenceStart, let word = currentWordRange, word.length > 0 {
+            let marked = NSRange(location: start + word.location, length: word.length)
+            if NSMaxRange(marked) <= out.length {
+                out.addAttributes([.foregroundColor: theme.accent,
+                                   .font: RamsFont.medium(fontSize)], range: marked)
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 1)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isCurrent ? Color.accentColor.opacity(0.16) : Color.clear)
-        )
-        .id("sentence-\(sentence.id)")
-        .opacity(isCurrent ? 1 : 0.86)
+        return out
+    }
+}
+
+/// The card shown after a chapter's last page: turning it starts the next one.
+struct ChapterTurnView: View {
+    let next: Chapter
+    let theme: RamsTheme
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Grid.x(1)) {
+            Spacer()
+            Text(next.number > 0 ? "\(next.part.displayName) · Chapter \(next.number)" : next.part.displayName)
+                .panelLabel(theme)
+            Text(next.title)
+                .font(.ramsBold(28))
+                .foregroundStyle(theme.inkC)
+            Rectangle()
+                .fill(theme.accentC)
+                .frame(width: Grid.x(5), height: 2)
+                .padding(.top, Grid.x(2))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
     }
 }

@@ -3,3 +3,8 @@ xcuserdata/
 *.xcuserstate
 build/
 DerivedData/
+.cache/
+.build/
+
+# Voices are fetched by Tools/fetch-voices.sh
+ACIMAudio/Resources/Voices/

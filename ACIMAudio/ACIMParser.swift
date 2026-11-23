@@ -110,7 +110,7 @@ enum ACIMParser {
             if !digits.isEmpty {
                 let number = Int(digits) ?? 0
                 var remainder = String(rest.dropFirst(digits.count))
-                while let f = remainder.first, markerTrim.contains(f) { remainder.removeFirst() }
+                while let f = remainder.first, f.unicodeScalars.allSatisfy(markerTrim.contains) { remainder.removeFirst() }
                 let title = cleanTitle(remainder)
                 return .chapter(number: number, title: title)
             }
@@ -124,7 +124,7 @@ enum ACIMParser {
             if !digits.isEmpty {
                 let number = Int(digits) ?? 0
                 var remainder = String(rest.dropFirst(digits.count))
-                while let f = remainder.first, markerTrim.contains(f) { remainder.removeFirst() }
+                while let f = remainder.first, f.unicodeScalars.allSatisfy(markerTrim.contains) { remainder.removeFirst() }
                 let title = cleanTitle(remainder)
                 return .chapter(number: number, title: title)
             }
@@ -247,20 +247,10 @@ enum ACIMParser {
         var results: [String] = []
         let tokenizer = NLTokenizer(unit: .sentence)
         tokenizer.string = text
-        var start = text.startIndex
-        tokenizer.enumerateTags(in: text.startIndex..<text.endIndex,
-                                unit: .sentence,
-                                scheme: .tokenType,
-                                options: [.omitWhitespace, .omitOther]) { _, range in
-            let piece = text[start..<range.upperBound]
-            let trimmed = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let trimmed = text[range].trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.count > 1 { results.append(trimmed) }
-            start = range.upperBound
             return true
-        }
-        if start < text.endIndex {
-            let trimmed = text[start..<text.endIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.count > 1 { results.append(trimmed) }
         }
         if results.isEmpty {
             let t = text.trimmingCharacters(in: .whitespacesAndNewlines)

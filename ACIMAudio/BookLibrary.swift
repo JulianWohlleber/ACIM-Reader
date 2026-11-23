@@ -35,7 +35,9 @@ final class BookLibrary: ObservableObject {
     }
 
     private var textFileURL: URL { supportDirectory.appendingPathComponent("urtext.txt") }
-    private var modelFileURL: URL { supportDirectory.appendingPathComponent("book.json") }
+    // Bump this whenever the shipped corpus changes, so an old parsed cache
+    // on a device is discarded instead of silently kept.
+    private var modelFileURL: URL { supportDirectory.appendingPathComponent("book-text-v3.json") }
 
     init() {
         Task { await restore() }
@@ -47,6 +49,16 @@ final class BookLibrary: ObservableObject {
         if let book = Self.loadCachedModel(at: modelFileURL) {
             state = .ready(book)
             return
+        }
+        // The work ships with the app, so there is normally nothing to fetch.
+        if let bundled = CorpusBuilder.bundledURL,
+           let data = try? Data(contentsOf: bundled) {
+            state = .parsing
+            if let book = await buildInBackground(data: data) {
+                try? JSONEncoder().encode(book).write(to: modelFileURL, options: .atomic)
+                state = .ready(book)
+                return
+            }
         }
         if let raw = try? String(contentsOf: textFileURL, encoding: .utf8) {
             state = .parsing
@@ -110,6 +122,14 @@ final class BookLibrary: ObservableObject {
         let book = await parseInBackground(raw: raw)
         try? JSONEncoder().encode(book).write(to: modelFileURL, options: .atomic)
         state = .ready(book)
+    }
+
+    private nonisolated func buildInBackground(data: Data) async -> ACIMBook? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: try? CorpusBuilder.build(from: data))
+            }
+        }
     }
 
     private nonisolated func parseInBackground(raw: String) async -> ACIMBook {

@@ -2,122 +2,108 @@ import Foundation
 import Combine
 import SwiftUI
 
-/// Glues the book, the audio position and the *view* position together.
+/// Keeps the *audio* position and the *view* position apart.
 ///
-/// The three interactions from the spec map to states like this:
-/// - **Swipe left/right** changes `viewPage` only. If you swipe away from the
-///   audio, `isBrowsing` becomes true and a pill offers to jump back. Audio
-///   playback is never interrupted.
-/// - **Tap on a sentence** moves the audio position there and (if it was
-///   playing/paused) continues playback from it.
-/// - **Play** while browsing first snaps the view back to the audio page,
-///   then plays/resumes.
+/// Both are sentence ids; the view layer turns them into pages, because only it
+/// knows how big a page is. The rules from the brief:
+/// - swiping moves the view only, never the audio
+/// - tapping a sentence moves the audio there
+/// - play first returns to the page the audio is on
 @MainActor
 final class ReaderViewModel: ObservableObject {
 
     let book: ACIMBook
     let audio: AudioReader
 
-    /// The page currently visible to the user.
-    @Published var viewPage: Int = 0
-    /// True when the view follows the audio position (not browsing).
+    /// The first sentence of the page on screen.
+    @Published var viewSentenceID: Int = 0
+    /// False while the reader is browsing away from the voice.
     @Published var followingAudio = true
 
     private var cancellables: Set<AnyCancellable> = []
 
-    init(book: ACIMBook, audio: AudioReader = AudioReader()) {
+    init(book: ACIMBook, reader: AudioReader? = nil) {
         self.book = book
-        self.audio = audio
+        self.audio = reader ?? AudioReader()
         audio.attach(book: book)
-        viewPage = book.page(ofSentence: audio.currentSentenceID)
+        viewSentenceID = audio.currentSentenceID
 
-        // Follow the audio position while in follow-mode.
+        // `audio` is a nested ObservableObject, so its changes do not reach this
+        // view model's observers by themselves. Republish the slow signals only:
+        // the word marker ticks many times a second and the page view observes
+        // `audio` directly for it.
+        Publishers.Merge3(audio.$isPlaying.map { _ in () },
+                          audio.$isPaused.map { _ in () },
+                          audio.$isPreparing.map { _ in () })
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         audio.$currentSentenceID
             .receive(on: DispatchQueue.main)
             .sink { [weak self] id in
                 guard let self else { return }
-                if self.followingAudio {
-                    let page = self.book.page(ofSentence: id)
-                    if page != self.viewPage {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            self.viewPage = page
-                        }
-                    }
+                self.objectWillChange.send()
+                if self.followingAudio, self.viewSentenceID != id {
+                    self.viewSentenceID = id
                 }
             }
             .store(in: &cancellables)
     }
 
-    // MARK: Derived state
+    // MARK: Derived
 
-    var audioPage: Int { book.page(ofSentence: audio.currentSentenceID) }
-    var isBrowsing: Bool { viewPage != audioPage }
+    var viewChapterID: Int { book.sentence(withID: viewSentenceID)?.chapterID ?? 0 }
+    var audioChapterID: Int { book.sentence(withID: audio.currentSentenceID)?.chapterID ?? 0 }
+    var heading: String { book.heading(forSentence: viewSentenceID) }
+    var isBrowsing: Bool { !followingAudio }
+    var sectionMarks: (index: Int, count: Int) { book.sectionPosition(forSentence: viewSentenceID) }
 
-    var currentPageNumberText: String {
-        "Page \(viewPage + 1) of \(book.pageCount)"
-    }
-
-    var audioChapterTitle: String {
-        book.title(forSentence: audio.currentSentenceID)
-    }
-
-    var audioPositionText: String {
-        "Sentence \(audio.currentSentenceID + 1) of \(book.sentenceCount)"
+    /// Where this chapter sits in the book — the rail under the marks.
+    var chapterPosition: (index: Int, count: Int) {
+        let index = book.chapters.firstIndex { $0.id == viewChapterID } ?? 0
+        return (index, max(1, book.chapters.count))
     }
 
     // MARK: Interactions
 
-    /// Called by the pager when the user swiped to another page.
-    func swiped(to page: Int) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            viewPage = page
-        }
-        followingAudio = (page == audioPage)
+    /// The finger moved the page. The audio keeps going wherever it was.
+    func browsed(toSentence id: Int, holdsAudio: Bool) {
+        viewSentenceID = id
+        followingAudio = holdsAudio
     }
 
-    /// Called by the settings button etc. when nothing structural changes.
-    func reactivateFollow() {
-        followingAudio = true
-    }
-
-    /// Tap on a sentence: move the audio there.
+    /// A tap in the running text moves the audio to that sentence.
     func tapped(sentenceID: Int) {
         audio.seek(to: sentenceID)
+        viewSentenceID = sentenceID
         followingAudio = true
-        let page = book.page(ofSentence: audio.currentSentenceID)
-        if page != viewPage {
-            withAnimation(.easeInOut(duration: 0.25)) { viewPage = page }
-        }
-        objectWillChange.send()
     }
 
-    /// The play button. If the user browsed away, we first bring the view
-    /// back to the page where the audio is, then resume playback.
+    /// Play returns to the page the audio is on before it resumes.
     func pressedPlay() {
-        if isBrowsing {
-            followingAudio = true
-            withAnimation(.easeInOut(duration: 0.25)) {
-                viewPage = audioPage
-            }
-        }
+        followingAudio = true
+        viewSentenceID = audio.currentSentenceID
         audio.play()
     }
 
-    func pressedPause() {
-        audio.pause()
-    }
+    func pressedPause() { audio.pause() }
 
-    /// The "back to audio" pill: jump the *view* back without touching
-    /// the audio itself.
-    func pressedGoToAudio() {
+    func returnToAudio() {
         followingAudio = true
-        withAnimation(.easeInOut(duration: 0.25)) {
-            viewPage = audioPage
-        }
+        viewSentenceID = audio.currentSentenceID
     }
 
-    /// Jump to the start of a chapter (table of contents).
-    func jump(toChapter chapter: Chapter) {
-        tapped(sentenceID: chapter.firstSentenceID)
+    /// From the chapter overview.
+    func jump(toSentence id: Int) {
+        audio.seek(to: id)
+        viewSentenceID = id
+        followingAudio = true
+    }
+
+    /// Turning the page past the end of a chapter.
+    func openChapter(_ chapter: Chapter) {
+        viewSentenceID = chapter.firstSentenceID
+        followingAudio = (audio.currentSentenceID == chapter.firstSentenceID)
     }
 }
