@@ -147,11 +147,10 @@ struct ChaptersView: View {
 
     // MARK: - A row
 
-    /// Computed, never measured: eyebrow, title, and however many rows of tiles
-    /// this chapter's sections need at this width.
+    /// Computed, never measured: the block above, at this width.
     private func expandedHeight(for chapter: Chapter, width: CGFloat) -> CGFloat {
         let tiles = book.sections(ofChapter: chapter.id).filter { !$0.roman.isEmpty }.count
-        var total = Grid.x(3) * 2 + 13 + Grid.x(1) + 26      // padding + eyebrow + gap + title
+        var total = Grid.x(2) + 13 + Grid.x(1) + 25 + Grid.x(3)   // top, eyebrow, gap, title, bottom
         if tiles > 0 {
             let usable = width - Grid.margin * 2
             let columns = max(1, Int((usable + Grid.x(1)) / (44 + Grid.x(1))))
@@ -166,34 +165,27 @@ struct ChaptersView: View {
         let openness = min(max(1 - d, 0), 1)
         let namedness = min(max(4 - d, 0), 1)
 
-        // Only build the states that are actually showing. A ZStack takes the
-        // height of its tallest child even at zero opacity, so a hidden open
-        // chapter would stretch the stack to its full height and push the thin
-        // rule out of the few points this row actually has.
+        // Nothing here is swapped for something else. The rule grows into the
+        // selector, and the title is one block throughout — it only gets
+        // larger, heavier and paler as its chapter comes into focus.
         return ZStack(alignment: .topLeading) {
-            if namedness < 0.999 {
-                Rectangle()
-                    .fill(theme.hairlineC)
-                    .frame(height: 2)
-                    .padding(.horizontal, Grid.margin)
-                    .offset(y: max(0, (height - 2) / 2))
-                    .opacity(1 - namedness)
-            }
+            // The rule, grown: full row height, no margins, ink.
+            Rectangle()
+                .fill(theme.inkC)
+                .frame(height: 2 + CGFloat(openness) * (height - 2))
+                .padding(.horizontal, Grid.margin * CGFloat(1 - openness))
+                .opacity(openness)
 
-            if namedness > 0.001, openness < 0.999 {
-                Text(title(chapter))
-                    .font(.rams(16))
-                    .foregroundStyle(theme.inkMutedC)
-                    .lineLimit(1)
-                    .padding(.vertical, Grid.x(2))
-                    .padding(.horizontal, Grid.margin)
-                    .opacity(namedness * (1 - openness))
-            }
+            content(chapter, openness: openness)
+                .opacity(namedness)
 
-            if openness > 0.001 {
-                expanded(chapter)
-                    .opacity(openness)
-            }
+            // The rule as a line, lying over the type. Titles come out from
+            // under it; it fades only once the selector has taken its place.
+            Rectangle()
+                .fill(theme.hairlineC)
+                .frame(height: 2)
+                .padding(.horizontal, Grid.margin)
+                .opacity(1 - openness)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
@@ -206,34 +198,39 @@ struct ChaptersView: View {
         }
     }
 
-    /// The open chapter is the one control that is switched on, so it inverts:
-    /// an ink band carrying paper-coloured type and outlines. In dark mode the
-    /// same rule reads the other way round, a pale band on a dark panel.
-    private func expanded(_ chapter: Chapter) -> some View {
+    /// One block of type for every state. The eyebrow and the tiles grow out of
+    /// zero height, and the title itself is a single `Text` whose size, weight
+    /// and colour are read straight off `openness`.
+    private func content(_ chapter: Chapter, openness: Double) -> some View {
         let tiles = book.sections(ofChapter: chapter.id).filter { !$0.roman.isEmpty }
         let eyebrow = chapter.number == 0
             ? chapter.part.displayName
             : "\(chapter.part.displayName) · Chapter \(chapter.number)"
 
-        return VStack(alignment: .leading, spacing: Grid.x(1)) {
+        return VStack(alignment: .leading, spacing: 0) {
             Text(eyebrow)
                 .font(.ramsMedium(10))
                 .tracking(1.4)
                 .textCase(.uppercase)
                 .foregroundStyle(theme.paperC.opacity(0.5))
+                .frame(height: 13 * CGFloat(openness), alignment: .bottom)
+                .clipped()
+                .opacity(openness)
 
             Button {
                 onPick(chapter.firstSentenceID)
                 dismiss()
             } label: {
                 Text(title(chapter))
-                    .font(.ramsMedium(20))
-                    .foregroundStyle(theme.paperC)
+                    .font(.custom("HelveticaNeue", size: 16 + 5 * CGFloat(openness))
+                            .weight(openness > 0.5 ? .medium : .regular))
+                    .foregroundStyle(theme.inkMutedC.mix(with: theme.paperC, by: openness))
                     .lineLimit(1)
             }
             .buttonStyle(.plain)
+            .padding(.top, Grid.x(1) * CGFloat(openness))
 
-            if !tiles.isEmpty {
+            if openness > 0.001, !tiles.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 44, maximum: 44), spacing: Grid.x(1))],
                           alignment: .leading, spacing: Grid.x(1)) {
                     ForEach(tiles) { section in
@@ -251,12 +248,12 @@ struct ChaptersView: View {
                     }
                 }
                 .padding(.top, Grid.x(1))
+                .opacity(openness)
             }
         }
-        .padding(.vertical, Grid.x(3))
+        .padding(.top, Grid.x(2))
         .padding(.horizontal, Grid.margin)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.inkC)
     }
 
     private func title(_ chapter: Chapter) -> String {
