@@ -8,3 +8,7 @@ DerivedData/
 
 # Voices are fetched by Tools/fetch-voices.sh
 ACIMAudio/Resources/Voices/
+
+# Python bytecode from Tools/
+__pycache__/
+*.pyc
