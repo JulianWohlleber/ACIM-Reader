@@ -108,8 +108,11 @@ actor KokoroSynthesizer {
         let count = Int(produced.pointee.n)
         guard count > 0, let source = produced.pointee.samples else { throw Failure.emptyResult }
 
-        return Clip(samples: Array(UnsafeBufferPointer(start: source, count: count)),
-                    sampleRate: Double(produced.pointee.sample_rate))
+        let rate = Double(produced.pointee.sample_rate)
+        let raw = Array(UnsafeBufferPointer(start: source, count: count))
+        // Done here, once per sentence, so a clip is already clean by the time
+        // it is cached and cannot be heard twice.
+        return Clip(samples: ClipCleanup.apply(raw, sampleRate: rate), sampleRate: rate)
     }
 
     /// What the voice is given, which is not quite what the page shows.

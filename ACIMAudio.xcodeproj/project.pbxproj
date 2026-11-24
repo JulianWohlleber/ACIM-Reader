@@ -24,6 +24,7 @@
 		7FBFDDCE53E7BF8FD979B868 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C90BC82E2B4B8663A2CB58F /* Assets.xcassets */; };
 		8E2900079CBCC1594E3CD41F /* ReaderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 140180607999570F8371E0A3 /* ReaderScreen.swift */; };
 		91777851402F495819CCAA65 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A578DA423FCECB68E7E00AE6 /* SpeechPlayer.swift */; };
+		977F210091825A5E6168F610 /* ClipCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */; };
 		97C803DEAFD3197AB64EEAA0 /* Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C59C283B1AA04B3377B4DE /* Voice.swift */; };
 		9BCB4FF8119F3E86E46E8EBA /* lexicon-us-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 27A09D268E23ABE1FA9EE09E /* lexicon-us-en.txt */; };
 		A18C956DE9665D0363B23C1F /* Design.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF53C42EFB3C5BAD05FA913 /* Design.swift */; };
@@ -63,6 +64,7 @@
 		F0C59C283B1AA04B3377B4DE /* Voice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice.swift; sourceTree = "<group>"; };
 		F4BBA0ED47412DF6F5502A33 /* CorpusBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusBuilder.swift; sourceTree = "<group>"; };
 		F957A551A22A08540BC7E5B0 /* ACIMParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACIMParser.swift; sourceTree = "<group>"; };
+		FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipCleanup.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +127,7 @@
 				DE17F077143AB8701F53BF60 /* CarouselPager.swift */,
 				7F1758B900D7C844BCE86859 /* ChapterPaginator.swift */,
 				2F6315A9B2ABEF2D27B56B32 /* ChaptersView.swift */,
+				FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */,
 				F4BBA0ED47412DF6F5502A33 /* CorpusBuilder.swift */,
 				8FF53C42EFB3C5BAD05FA913 /* Design.swift */,
 				8E383D13BD4AA21434BE07A7 /* Info.plist */,
@@ -230,6 +233,7 @@
 				7C7ABF9898377BD37DAE9D37 /* CarouselPager.swift in Sources */,
 				A7399ED420AD2749CCD57C60 /* ChapterPaginator.swift in Sources */,
 				0BDD89B2C533290B991F15C2 /* ChaptersView.swift in Sources */,
+				977F210091825A5E6168F610 /* ClipCleanup.swift in Sources */,
 				5DEFD15016CAC94CA60F1A2E /* CorpusBuilder.swift in Sources */,
 				A18C956DE9665D0363B23C1F /* Design.swift in Sources */,
 				14F2EB6F545F81451ADB2A38 /* KokoroSynthesizer.swift in Sources */,
