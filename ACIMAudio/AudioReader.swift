@@ -329,7 +329,7 @@ final class AudioReader: NSObject, ObservableObject {
             .sink { [weak self] _ in
                 guard let self, self.isPlaying else { return }
                 let plan = self.timings[self.currentSentenceID] ?? []
-                let word = WordTiming.word(at: self.player.elapsed, in: plan)
+                let word = WordTiming.markerSpan(at: self.player.elapsed, in: plan)
                 // Publishing only on a change keeps the page from being
                 // re-laid-out thirty times a second for the same word.
                 if word != self.currentWordRange { self.currentWordRange = word }

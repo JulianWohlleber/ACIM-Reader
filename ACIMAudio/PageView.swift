@@ -54,8 +54,8 @@ struct PageTextView: UIViewRepresentable {
         let holdsCursor = page.sentenceIDs.contains(currentSentenceID)
             || page.sentenceIDs.contains(currentSentenceID + 1)
         let key = holdsCursor
-            ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(theme.isDark)"
-            : "i:\(page.chapterID):\(page.id):\(theme.isDark)"
+            ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(fontSize):\(theme.isDark)"
+            : "i:\(page.chapterID):\(page.id):\(fontSize):\(theme.isDark)"
         guard key != coordinator.renderedKey else { return }
         coordinator.renderedKey = key
         view.attributedText = coloured()
@@ -110,10 +110,16 @@ struct PageTextView: UIViewRepresentable {
         if let start = sentenceStart, let word = currentWordRange, word.length > 0 {
             let marked = NSRange(location: start + word.location, length: word.length)
             if NSMaxRange(marked) <= out.length {
-                // Colour only. Giving the spoken word a heavier cut changes how
-                // wide it is, which re-breaks the line and makes the paragraph
-                // twitch word by word as the marker travels along it.
-                out.addAttribute(.foregroundColor, value: theme.accent, range: marked)
+                // A marker, not a recoloured word. Orange letters among black
+                // ones are easy to miss mid-paragraph; a band of colour laid
+                // over the words is seen without being looked for, and reads
+                // as one stroke travelling along the line.
+                //
+                // Background and foreground only: a heavier cut would be wider,
+                // which re-breaks the line and makes the paragraph twitch word
+                // by word as the marker moves.
+                out.addAttributes([.backgroundColor: theme.accent,
+                                   .foregroundColor: theme.paper], range: marked)
             }
         }
         return out
