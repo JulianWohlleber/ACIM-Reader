@@ -70,7 +70,9 @@ actor KokoroSynthesizer {
         config.model.kokoro.lexicon = UnsafePointer(cString(try path("lexicon-us-en.txt")))
         config.model.kokoro.lang    = UnsafePointer(cString("en-us"))
         config.model.kokoro.length_scale = 1.0
-        config.model.num_threads = 2
+        // Synthesis latency is what you hear as a gap, so give it the cores
+        // this phone actually has, while leaving room for audio and UI.
+        config.model.num_threads = Int32(max(2, min(4, ProcessInfo.processInfo.activeProcessorCount - 2)))
         config.model.debug = 0
         config.model.provider = UnsafePointer(cString("cpu"))
         config.max_num_sentences = 1
@@ -85,6 +87,10 @@ actor KokoroSynthesizer {
     /// Synthesise one sentence. The reader always speaks a single sentence, so
     /// the sentence index stays exactly in step with the audio.
     func speak(_ text: String, voice: Voice, speed: Float) throws -> Clip {
+        // Checked here, on the actor, rather than by the caller: requests wait
+        // their turn in the actor's queue, and a look-ahead that a tap made
+        // pointless must drop out before it takes the engine.
+        try Task.checkCancellation()
         try prepare()
         guard let handle else { throw Failure.handleUnavailable }
 
