@@ -141,11 +141,30 @@ the first word on. `Clip` measures its own speech window and `WordTiming.plan`
 lays the words across that, not across the duration.
 
 **Words outside the lexicon are dropped from the audio, silently.** sherpa
-reports `OOV word skipped: 'exists'` and simply does not say the word. The page
-and the voice then disagree, and every word position after it shifts. Stripping
-quotation marks (above) is one instance of the same problem. This is **not
-fixed**: the real repair is to give Kokoro an espeak-ng `data_dir` so it can
-pronounce what the lexicon lacks, instead of a lexicon alone.
+>= 2.0 phonemises Kokoro from a lexicon alone — espeak-ng is no longer
+consulted — so a word it does not know is not guessed at: it is simply not
+said. The page and the voice then disagree, and every word position after the
+gap shifts.
+
+The shipped lexicon has 178,401 entries and still misses ordinary inflections:
+it holds `exist` and `existing` but neither `exists` nor `existed`. Measured
+against this corpus that was **2.19 % of all words** — 6310 occurrences of 723
+distinct words, including `god's` (434x), `created` (320x) and `illusions`
+(239x).
+
+`Tools/build_lexicon_supplement.py` derives the missing pronunciations from
+the base forms the lexicon does have, by the ordinary rules of English
+inflection, and the lexicon's own entries fix each rule (`tests` = `test` + s,
+`wishes` = `wish` + ᵻz, `needed` = `need` + ᵻd). 685 of 700 are covered; the
+rest are compounds and URLs. sherpa takes **several lexicons, comma-separated**,
+so the supplement is passed alongside the original rather than patched into it.
+
+Two things to keep in mind if you touch that generator. It must **parse** the
+corpus, not scan the file: a raw scan reads an escaped newline plus `but` as a
+word "nbut". And every sound it invents must exist in `tokens.txt` — `ᵻ`
+(U+1D7B) and `ᵬ` (U+1D6C) look identical on screen and only one of them is a
+phoneme the model knows. The generator checks this and refuses to write a file
+that would fail quietly.
 
 **The word position is derived, not reported.** sherpa-onnx returns samples
 only, so `WordTiming` shares the clip's exact duration out across the words by
