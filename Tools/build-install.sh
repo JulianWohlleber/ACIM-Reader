@@ -91,12 +91,18 @@ echo "==> Signing..."
 # Nested code must be signed before the bundle that contains it, or installd
 # rejects the app with "The executable contains an invalid signature".
 # Frameworks get no entitlements of their own.
-shopt -s nullglob
-for nested in "$APP"/Frameworks/*.framework "$APP"/Frameworks/*.dylib; do
-  echo "    $(basename "$nested")"
+# Sign every piece of nested code wherever it sits, longest path first so a
+# container is always signed after its contents.
+#
+# Not just Frameworks/: Xcode 16 splits a Debug build into a thin launcher plus
+# ACIM.debug.dylib, and that dylib lands at the bundle ROOT. Left unsigned,
+# dyld refuses the whole app at launch with "missing code signature" — the app
+# installs fine and dies the moment you tap it.
+while IFS= read -r nested; do
+  echo "    ${nested#"$APP"/}"
   codesign --force --timestamp=none --sign "$CERT" "$nested"
-done
-shopt -u nullglob
+done < <(find "$APP" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' \) \
+         | awk '{ print length "\t" $0 }' | sort -rn | cut -f2-)
 
 codesign --force --timestamp=none --generate-entitlement-der \
   --sign "$CERT" --entitlements "$ENT" "$APP"
