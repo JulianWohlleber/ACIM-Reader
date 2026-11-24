@@ -96,30 +96,45 @@ struct PageTextView: UIViewRepresentable {
         out.addAttribute(.foregroundColor, value: theme.inkMuted, range: whole)
 
         let nextSentenceID = currentSentenceID + 1
-        var sentenceStart: Int?
+        var sentenceOnPage: NSRange?
         page.text.enumerateAttribute(.acimSentence, in: whole) { value, range, _ in
             guard let id = value as? Int else { return }
             if id == currentSentenceID {
                 out.addAttribute(.foregroundColor, value: theme.ink, range: range)
-                if sentenceStart == nil { sentenceStart = range.location }
+                // The whole of the sentence that is on this page, not just the
+                // first run of it: the marker is clamped into this below.
+                sentenceOnPage = sentenceOnPage.map { NSUnionRange($0, range) } ?? range
             } else if id == nextSentenceID {
                 out.addAttribute(.foregroundColor, value: theme.inkNext, range: range)
             }
         }
 
-        if let start = sentenceStart, let word = currentWordRange, word.length > 0 {
-            let marked = NSRange(location: start + word.location, length: word.length)
-            if NSMaxRange(marked) <= out.length {
+        if let sentence = sentenceOnPage, let word = currentWordRange, word.length > 0 {
+            // Word offsets count from the start of the sentence, which is not
+            // the start of what is on this page: a sentence running over a page
+            // break continues here mid-way. The old code dropped the marker
+            // whenever the arithmetic left the string — so on exactly those
+            // pages there was no marker at all. Clamp into the part of the
+            // sentence that is actually on this page instead; a marker pinned
+            // to the visible edge still says where the voice is, nothing says
+            // nothing.
+            let wanted = NSRange(location: sentence.location + word.location,
+                                 length: word.length)
+            let lower = max(sentence.location, min(wanted.location, NSMaxRange(sentence) - 1))
+            let upper = min(NSMaxRange(sentence), max(NSMaxRange(wanted), lower + 1))
+
+            if upper > lower, upper <= out.length {
                 // A marker, not a recoloured word. Orange letters among black
                 // ones are easy to miss mid-paragraph; a band of colour laid
-                // over the words is seen without being looked for, and reads
-                // as one stroke travelling along the line.
+                // over the words is seen without being looked for, and reads as
+                // one stroke travelling along the line.
                 //
                 // Background and foreground only: a heavier cut would be wider,
                 // which re-breaks the line and makes the paragraph twitch word
                 // by word as the marker moves.
                 out.addAttributes([.backgroundColor: theme.accent,
-                                   .foregroundColor: theme.paper], range: marked)
+                                   .foregroundColor: theme.paper],
+                                  range: NSRange(location: lower, length: upper - lower))
             }
         }
         return out

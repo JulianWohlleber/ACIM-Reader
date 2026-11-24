@@ -212,6 +212,13 @@ final class AudioReader: NSObject, ObservableObject {
                 synthesize(nextToEnqueue)       // not ready yet; pump() runs again when it is
                 break
             }
+            // A clip served from the cache must still carry a word plan, or the
+            // marker would have nothing to follow and simply never appear.
+            if timings[nextToEnqueue] == nil,
+               let sentence = book.sentence(withID: nextToEnqueue) {
+                timings[nextToEnqueue] = WordTiming.plan(for: sentence.text,
+                                                         duration: clip.duration)
+            }
             do {
                 try player.enqueue(samples: clip.samples,
                                    sampleRate: clip.sampleRate,
