@@ -178,6 +178,26 @@ needs the tokenisation done directly rather than through sherpa.
   holding only the *next* sentence must repaint too, or the lead-in tone never
   appears when it falls across a page break.
 
+## A nested ObservableObject publishes to nobody
+
+`ReaderViewModel` owns an `AudioReader`. SwiftUI does **not** see through that:
+a view observing the view model learns nothing when the reader changes. The
+view model therefore republishes the signals it cares about by hand —
+`isPlaying`, `isPaused`, `isPreparing`, `currentSentenceID`.
+
+`currentWordRange` was deliberately left out, and a comment said the page view
+"observes `audio` directly for it". It did not. It read the word range through
+the view model without observing anything, so the marker reached the screen
+only when some *other* republished value happened to change: on a sentence
+change, where the word range had just been cleared to nil, and on pause, where
+it still held its last value. Hence a marker that appeared, correctly placed,
+the moment you pressed pause and was missing while the voice ran.
+
+`MarkedPage` now holds `@ObservedObject var audio` and is the only thing
+redrawn when the marker moves. **If you add a signal from the reader to the
+view, say where it is observed, and check that something actually observes
+it.** A comment claiming an observation is not an observation.
+
 ## Controls
 
 **A plain `Button` around a bare `Text` owns only its glyphs.** A tap a few

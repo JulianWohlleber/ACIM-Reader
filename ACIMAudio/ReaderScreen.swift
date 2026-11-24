@@ -140,13 +140,12 @@ struct ReaderScreen: View {
         } makePage: { index in
             Group {
                 if index < pages.count {
-                    PageTextView(page: pages[index],
-                                 box: box,
-                                 currentSentenceID: viewModel.audio.currentSentenceID,
-                                 currentWordRange: viewModel.audio.currentWordRange,
-                                 fontSize: CGFloat(fontSize),
-                                 theme: theme,
-                                 onTap: { viewModel.tapped(sentenceID: $0) })
+                    MarkedPage(audio: viewModel.audio,
+                               page: pages[index],
+                               box: box,
+                               fontSize: CGFloat(fontSize),
+                               theme: theme,
+                               onTap: { viewModel.tapped(sentenceID: $0) })
                         .frame(width: box.width, height: box.height, alignment: .topLeading)
                 } else if let nextChapter {
                     ChapterTurnView(next: nextChapter, theme: theme) {
@@ -246,5 +245,37 @@ private struct DisclosureMark: View {
         .fill(theme.accentC)
         .frame(width: 10, height: 6)
         .accessibilityHidden(true)
+    }
+}
+
+/// The page, watching the reader itself.
+///
+/// `ReaderViewModel` republishes only the slow signals from its nested
+/// `AudioReader` — playing, paused, preparing, and the sentence — on the
+/// stated assumption that the page view would observe the reader directly for
+/// the word marker. It never did: it read the word range through the view
+/// model without observing it, so the marker only ever reached the screen when
+/// something *else* changed. That is why it appeared on pause, holding its
+/// last position, and was missing while the voice ran.
+///
+/// Observing here rather than republishing from the view model keeps the cost
+/// where it belongs: the marker moves several times a second, and only this
+/// page is redrawn for it, not the whole screen.
+private struct MarkedPage: View {
+    @ObservedObject var audio: AudioReader
+    let page: ChapterPaginator.Page
+    let box: CGSize
+    let fontSize: CGFloat
+    let theme: RamsTheme
+    let onTap: (Int) -> Void
+
+    var body: some View {
+        PageTextView(page: page,
+                     box: box,
+                     currentSentenceID: audio.currentSentenceID,
+                     currentWordRange: audio.currentWordRange,
+                     fontSize: fontSize,
+                     theme: theme,
+                     onTap: onTap)
     }
 }
