@@ -217,7 +217,8 @@ final class AudioReader: NSObject, ObservableObject {
             if timings[nextToEnqueue] == nil,
                let sentence = book.sentence(withID: nextToEnqueue) {
                 timings[nextToEnqueue] = WordTiming.plan(for: sentence.text,
-                                                         duration: clip.duration)
+                                                         from: clip.speechStart,
+                                                         to: clip.speechEnd)
             }
             do {
                 try player.enqueue(samples: clip.samples,
@@ -261,7 +262,9 @@ final class AudioReader: NSObject, ObservableObject {
             switch outcome {
             case .success(let clip):
                 self.clips[clipKey] = clip
-                self.timings[sentenceID] = WordTiming.plan(for: text, duration: clip.duration)
+                self.timings[sentenceID] = WordTiming.plan(for: text,
+                                                           from: clip.speechStart,
+                                                           to: clip.speechEnd)
                 self.pump()
             case .failure(let error):
                 // A cancelled look-ahead is routine, not a fault to report.

@@ -52,6 +52,29 @@ this — do not narrow it back to a glob.
 - Remote launch fails on a locked phone too (`FBSOpenApplicationServiceErrorDomain
   error 1`, reason `Locked`). Installing is enough; the person taps the app.
 
+## Seeing what the app does
+
+A physical iPhone gives you **neither a screenshot nor a console**, so a visual
+question about the reading view cannot be answered on it. Build for the
+Simulator and look:
+
+    xcodebuild -project ACIMAudio.xcodeproj -scheme ACIMAudio -configuration Debug \
+      -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/dd-sim \
+      CODE_SIGNING_ALLOWED=NO build
+
+The voice model runs in the Simulator, so playback and the marker can be
+watched there in full. For anything the screenshot cannot settle, an `NSLog`
+and
+
+    xcrun simctl spawn <udid> log show --last 20s \
+      --predicate 'eventMessage CONTAINS "YOURTAG"' --style compact
+
+turns a guess into a reading. The marker was chased for three rounds on
+reasoning alone; one screenshot and one log line ended it. Do that first.
+
+Note that a screenshot between two sentences shows **no marker**, because the
+word range is cleared when a clip starts. One empty screenshot proves nothing.
+
 ## Audio: the invariants
 
 **One sentence is one synthesised clip.** The sentence index *is* the audio
@@ -111,6 +134,19 @@ from a lexicon, and a quoted word is not in it, so `"harder"` was being dropped
 mid-sentence. `KokoroSynthesizer.speakable` handles this; keep apostrophes,
 they are needed for contractions.
 
+**Clips are padded with silence** — about 60 ms at the front and 60–100 ms at
+the back. Spreading the words across the whole clip hands roughly 8 % of a
+short sentence to silence and the marker runs that far ahead of the voice from
+the first word on. `Clip` measures its own speech window and `WordTiming.plan`
+lays the words across that, not across the duration.
+
+**Words outside the lexicon are dropped from the audio, silently.** sherpa
+reports `OOV word skipped: 'exists'` and simply does not say the word. The page
+and the voice then disagree, and every word position after it shifts. Stripping
+quotation marks (above) is one instance of the same problem. This is **not
+fixed**: the real repair is to give Kokoro an espeak-ng `data_dir` so it can
+pronounce what the lexicon lacks, instead of a lexicon alone.
+
 **The word position is derived, not reported.** sherpa-onnx returns samples
 only, so `WordTiming` shares the clip's exact duration out across the words by
 syllable. Roughly 100–200 ms accurate. The *sentence* boundary is exact. An
@@ -126,6 +162,13 @@ needs the tokenisation done directly rather than through sherpa.
   flickers between short words and reads as a blinking box; a band reads as one
   stroke travelling along the line. The word being spoken is always the first
   one under it, so the marker leads rather than lags.
+- **The marker is a wash, not a block.** The accent at a quarter strength, with
+  the words keeping their own ink. Solid accent forces the text to be knocked
+  out white, and the page then reads as if something were selected rather than
+  being read aloud.
+- **Keep the lead-in tone clearly apart from both neighbours.** At `#5C5952` it
+  was so close to ink that the sentence coming next looked like the one being
+  read, which defeats the point of having it.
 - **Pages are measured, not guessed.** `ChapterPaginator` lays text into
   page-sized containers against the real viewport. Colour is applied in
   `PageView`, never during pagination, because the reading position changes

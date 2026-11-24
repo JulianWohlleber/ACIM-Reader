@@ -15,6 +15,18 @@ struct WordTiming {
     let end: TimeInterval
 
     static func plan(for text: String, duration: TimeInterval) -> [WordTiming] {
+        plan(for: text, from: 0, to: duration)
+    }
+
+    /// Lay the words across the stretch that actually carries voice.
+    ///
+    /// The clip is longer than the speech: Kokoro pads it with silence at both
+    /// ends. Measuring that padding and starting the first word after it is
+    /// what stops the marker from running ahead of the voice.
+    static func plan(for text: String,
+                     from speechStart: TimeInterval,
+                     to speechEnd: TimeInterval) -> [WordTiming] {
+        let duration = speechEnd - speechStart
         guard duration > 0 else { return [] }
         let ns = text as NSString
         var spans: [(NSRange, Double)] = []
@@ -48,7 +60,7 @@ struct WordTiming {
         let total = spans.reduce(0) { $0 + $1.1 }
         guard total > 0 else { return [] }
 
-        var cursor: TimeInterval = 0
+        var cursor: TimeInterval = speechStart
         return spans.map { range, weight in
             let length = duration * (weight / total)
             let timing = WordTiming(range: range, start: cursor, end: cursor + length)

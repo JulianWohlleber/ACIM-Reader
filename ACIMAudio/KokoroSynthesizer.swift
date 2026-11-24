@@ -28,7 +28,54 @@ actor KokoroSynthesizer {
     struct Clip {
         let samples: [Float]
         let sampleRate: Double
+        /// Where the voice actually starts and stops inside the clip.
+        ///
+        /// Kokoro pads every clip with roughly 60 ms of silence at the front
+        /// and 60–100 ms at the back. Spreading the words across the whole
+        /// clip therefore hands about 8 % of a short sentence to silence, and
+        /// the marker runs that far ahead of the voice from the first word on.
+        let speechStart: TimeInterval
+        let speechEnd: TimeInterval
+
         var duration: TimeInterval { sampleRate > 0 ? Double(samples.count) / sampleRate : 0 }
+
+        init(samples: [Float], sampleRate: Double) {
+            self.samples = samples
+            self.sampleRate = sampleRate
+            let window = Clip.speechWindow(in: samples, sampleRate: sampleRate)
+            self.speechStart = window.lowerBound
+            self.speechEnd = window.upperBound
+        }
+
+        /// First and last moment carrying sound, found by frame energy.
+        private static func speechWindow(in samples: [Float],
+                                         sampleRate: Double) -> ClosedRange<TimeInterval> {
+            let total = sampleRate > 0 ? Double(samples.count) / sampleRate : 0
+            guard sampleRate > 0, samples.count > 512 else { return 0...total }
+
+            let frame = 256
+            let count = samples.count / frame
+            var energies = [Double](repeating: 0, count: count)
+            var peak = 0.0
+            for index in 0..<count {
+                var sum = 0.0
+                for offset in 0..<frame {
+                    let value = Double(samples[index * frame + offset])
+                    sum += value * value
+                }
+                let rms = (sum / Double(frame)).squareRoot()
+                energies[index] = rms
+                peak = max(peak, rms)
+            }
+
+            let threshold = max(peak * 0.02, 1e-4)
+            guard let first = energies.firstIndex(where: { $0 > threshold }),
+                  let last = energies.lastIndex(where: { $0 > threshold }) else { return 0...total }
+
+            let start = Double(first * frame) / sampleRate
+            let end = Double((last + 1) * frame) / sampleRate
+            return start...min(end, total)
+        }
     }
 
     private var handle: OpaquePointer?

@@ -124,17 +124,16 @@ struct PageTextView: UIViewRepresentable {
             let upper = min(NSMaxRange(sentence), max(NSMaxRange(wanted), lower + 1))
 
             if upper > lower, upper <= out.length {
-                // A marker, not a recoloured word. Orange letters among black
-                // ones are easy to miss mid-paragraph; a band of colour laid
-                // over the words is seen without being looked for, and reads as
-                // one stroke travelling along the line.
+                // A wash, the way a highlighter works: the words keep their
+                // own ink and the colour lies under them. Solid accent with
+                // the text knocked out white reads as a selection rather than
+                // as something being read aloud.
                 //
-                // Background and foreground only: a heavier cut would be wider,
+                // Background only: changing the cut would change the width,
                 // which re-breaks the line and makes the paragraph twitch word
                 // by word as the marker moves.
-                out.addAttributes([.backgroundColor: theme.accent,
-                                   .foregroundColor: theme.paper],
-                                  range: NSRange(location: lower, length: upper - lower))
+                out.addAttribute(.backgroundColor, value: theme.marker,
+                                 range: NSRange(location: lower, length: upper - lower))
             }
         }
         return out
