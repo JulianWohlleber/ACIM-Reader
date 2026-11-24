@@ -1,8 +1,9 @@
 # ACIM Reader (iOS)
 
 An iPhone app that reads **A Course in Miracles** aloud, page by page, and marks
-the position being read — the live sentence in full ink, the word currently
-spoken in orange.
+the position being read: the sentence coming next leans in, the sentence being
+read is full ink, and an orange marker rides the two or three words being
+spoken.
 
 ## Interaction model
 
