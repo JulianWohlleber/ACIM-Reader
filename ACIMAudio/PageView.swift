@@ -49,7 +49,10 @@ struct PageTextView: UIViewRepresentable {
         coordinator.onTap = onTap
         view.textContainer.size = box
 
+        // A page that holds only the *next* sentence must repaint too, or the
+        // lead-in tone would never appear on it.
         let holdsCursor = page.sentenceIDs.contains(currentSentenceID)
+            || page.sentenceIDs.contains(currentSentenceID + 1)
         let key = holdsCursor
             ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(theme.isDark)"
             : "i:\(page.chapterID):\(page.id):\(theme.isDark)"
@@ -83,26 +86,34 @@ struct PageTextView: UIViewRepresentable {
         }
     }
 
-    /// Everything not being read sits back in grey; the live sentence is
-    /// full-strength ink; the single word being spoken is the only orange on
-    /// the screen.
+    /// Four strengths, so the page says where the voice is without shouting:
+    /// the text at rest is grey, the sentence coming next leans in, the
+    /// sentence being read is full-strength ink, and the single word being
+    /// spoken is the only orange on the screen.
     private func coloured() -> NSAttributedString {
         let out = NSMutableAttributedString(attributedString: page.text)
         let whole = NSRange(location: 0, length: out.length)
         out.addAttribute(.foregroundColor, value: theme.inkMuted, range: whole)
 
+        let nextSentenceID = currentSentenceID + 1
         var sentenceStart: Int?
         page.text.enumerateAttribute(.acimSentence, in: whole) { value, range, _ in
-            guard let id = value as? Int, id == currentSentenceID else { return }
-            out.addAttribute(.foregroundColor, value: theme.ink, range: range)
-            if sentenceStart == nil { sentenceStart = range.location }
+            guard let id = value as? Int else { return }
+            if id == currentSentenceID {
+                out.addAttribute(.foregroundColor, value: theme.ink, range: range)
+                if sentenceStart == nil { sentenceStart = range.location }
+            } else if id == nextSentenceID {
+                out.addAttribute(.foregroundColor, value: theme.inkNext, range: range)
+            }
         }
 
         if let start = sentenceStart, let word = currentWordRange, word.length > 0 {
             let marked = NSRange(location: start + word.location, length: word.length)
             if NSMaxRange(marked) <= out.length {
-                out.addAttributes([.foregroundColor: theme.accent,
-                                   .font: RamsFont.medium(fontSize)], range: marked)
+                // Colour only. Giving the spoken word a heavier cut changes how
+                // wide it is, which re-breaks the line and makes the paragraph
+                // twitch word by word as the marker travels along it.
+                out.addAttribute(.foregroundColor, value: theme.accent, range: marked)
             }
         }
         return out

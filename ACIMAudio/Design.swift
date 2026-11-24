@@ -37,6 +37,10 @@ struct RamsTheme {
     var ink:       UIColor { isDark ? UIColor(rgb: 0xE9E6E0) : UIColor(rgb: 0x1A1A1A) }
     /// Text that is not being read right now.
     var inkMuted:  UIColor { isDark ? UIColor(rgb: 0x737069) : UIColor(rgb: 0x97938B) }
+    /// The sentence that comes next: already leaning in, but not yet speaking.
+    /// Sits halfway between `inkMuted` and `ink`, so the eye can find where it
+    /// is about to go without being pulled off the line being read.
+    var inkNext:   UIColor { isDark ? UIColor(rgb: 0xABA69D) : UIColor(rgb: 0x5C5952) }
     /// Engraved labels on a Braun front panel.
     var label:     UIColor { isDark ? UIColor(rgb: 0x8A8780) : UIColor(rgb: 0x7C7971) }
     /// 0.5pt rules. Never a border, never a shadow.
@@ -55,6 +59,7 @@ struct RamsTheme {
     var surfaceC:  Color { Color(surface) }
     var inkC:      Color { Color(ink) }
     var inkMutedC: Color { Color(inkMuted) }
+    var inkNextC:  Color { Color(inkNext) }
     var labelC:    Color { Color(label) }
     var hairlineC: Color { Color(hairline) }
     var accentC:   Color { Color(accent) }
