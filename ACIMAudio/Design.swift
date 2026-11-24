@@ -37,12 +37,22 @@ struct RamsTheme {
     var ink:       UIColor { isDark ? UIColor(rgb: 0xE9E6E0) : UIColor(rgb: 0x1A1A1A) }
     /// Text that is not being read right now.
     var inkMuted:  UIColor { isDark ? UIColor(rgb: 0x737069) : UIColor(rgb: 0x97938B) }
+    /// The sentence that comes next: already leaning in, but not yet speaking.
+    /// Sits halfway between `inkMuted` and `ink`, so the eye can find where it
+    /// is about to go without being pulled off the line being read.
+    var inkNext:   UIColor { isDark ? UIColor(rgb: 0x9A958C) : UIColor(rgb: 0x7A766E) }
     /// Engraved labels on a Braun front panel.
     var label:     UIColor { isDark ? UIColor(rgb: 0x8A8780) : UIColor(rgb: 0x7C7971) }
     /// 0.5pt rules. Never a border, never a shadow.
     var hairline:  UIColor { isDark ? UIColor(rgb: 0x343230) : UIColor(rgb: 0xD6D3CC) }
     /// The one signal colour.
     var accent:    UIColor { isDark ? UIColor(rgb: 0xF2652A) : UIColor(rgb: 0xDE4E0A) }
+    /// The marker laid over the words being spoken: the accent at low
+    /// strength, a wash you read the black text straight through. At full
+    /// strength it stops being a marker and becomes a block of colour — the
+    /// text has to be knocked out white to survive it, and the page reads as
+    /// if something were selected rather than being read aloud.
+    var marker:    UIColor { accent.withAlphaComponent(isDark ? 0.34 : 0.25) }
     /// The faint tint behind the sentence currently being spoken.
     var mark:      UIColor { isDark ? UIColor(rgb: 0x2B2825) : UIColor(rgb: 0xE8E4DA) }
 
@@ -55,10 +65,12 @@ struct RamsTheme {
     var surfaceC:  Color { Color(surface) }
     var inkC:      Color { Color(ink) }
     var inkMutedC: Color { Color(inkMuted) }
+    var inkNextC:  Color { Color(inkNext) }
     var labelC:    Color { Color(label) }
     var hairlineC: Color { Color(hairline) }
     var accentC:   Color { Color(accent) }
     var markC:     Color { Color(mark) }
+    var markerC:   Color { Color(marker) }
 }
 
 /// Helvetica, as on every Braun front panel.

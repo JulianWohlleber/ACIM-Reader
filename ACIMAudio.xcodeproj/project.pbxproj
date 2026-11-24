@@ -12,6 +12,7 @@
 		0BDD89B2C533290B991F15C2 /* ChaptersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6315A9B2ABEF2D27B56B32 /* ChaptersView.swift */; };
 		11325FBC48594D96E3078EAE /* WordTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F37CBC0283D765AA37D7051 /* WordTiming.swift */; };
 		14F2EB6F545F81451ADB2A38 /* KokoroSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB40F76E0A8E65C78EEB42E5 /* KokoroSynthesizer.swift */; };
+		1D552A35C3B2C0CC0CA83954 /* lexicon-acim.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5A42BF2386427FE70A085C46 /* lexicon-acim.txt */; };
 		2E683359AA453881FADC93ED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4965257BC4F45CB0F00B83B /* SettingsView.swift */; };
 		3360658EF4FB29DFB3D393DD /* ACIMParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F957A551A22A08540BC7E5B0 /* ACIMParser.swift */; };
 		563AEC8E078CB8CD9C57232D /* ReaderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE93A649CE8776C08F39BEEE /* ReaderViewModel.swift */; };
@@ -21,8 +22,10 @@
 		5B35A8F09AAA4CA7FB02278C /* acim.json in Resources */ = {isa = PBXBuildFile; fileRef = B345A6E4EE9CCB0E2122A9AA /* acim.json */; };
 		5DEFD15016CAC94CA60F1A2E /* CorpusBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4BBA0ED47412DF6F5502A33 /* CorpusBuilder.swift */; };
 		7C7ABF9898377BD37DAE9D37 /* CarouselPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE17F077143AB8701F53BF60 /* CarouselPager.swift */; };
+		7FBFDDCE53E7BF8FD979B868 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4C90BC82E2B4B8663A2CB58F /* Assets.xcassets */; };
 		8E2900079CBCC1594E3CD41F /* ReaderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 140180607999570F8371E0A3 /* ReaderScreen.swift */; };
 		91777851402F495819CCAA65 /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A578DA423FCECB68E7E00AE6 /* SpeechPlayer.swift */; };
+		977F210091825A5E6168F610 /* ClipCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */; };
 		97C803DEAFD3197AB64EEAA0 /* Voice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C59C283B1AA04B3377B4DE /* Voice.swift */; };
 		9BCB4FF8119F3E86E46E8EBA /* lexicon-us-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = 27A09D268E23ABE1FA9EE09E /* lexicon-us-en.txt */; };
 		A18C956DE9665D0363B23C1F /* Design.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF53C42EFB3C5BAD05FA913 /* Design.swift */; };
@@ -42,6 +45,8 @@
 		2F6315A9B2ABEF2D27B56B32 /* ChaptersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChaptersView.swift; sourceTree = "<group>"; };
 		32D40D93ED00131AD56F0E75 /* ACIMAudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACIMAudioApp.swift; sourceTree = "<group>"; };
 		3959E6027D75CCB4C85C26EF /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		4C90BC82E2B4B8663A2CB58F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5A42BF2386427FE70A085C46 /* lexicon-acim.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "lexicon-acim.txt"; sourceTree = "<group>"; };
 		60492EF01F181F496C7CE6A6 /* PageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageView.swift; sourceTree = "<group>"; };
 		6F98CE55EA5AD5BB3E824ACE /* AudioReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReader.swift; sourceTree = "<group>"; };
 		7F1758B900D7C844BCE86859 /* ChapterPaginator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterPaginator.swift; sourceTree = "<group>"; };
@@ -61,6 +66,7 @@
 		F0C59C283B1AA04B3377B4DE /* Voice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice.swift; sourceTree = "<group>"; };
 		F4BBA0ED47412DF6F5502A33 /* CorpusBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusBuilder.swift; sourceTree = "<group>"; };
 		F957A551A22A08540BC7E5B0 /* ACIMParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACIMParser.swift; sourceTree = "<group>"; };
+		FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipCleanup.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +84,7 @@
 		0373483D9FCCC3A643C850F2 /* Voices */ = {
 			isa = PBXGroup;
 			children = (
+				5A42BF2386427FE70A085C46 /* lexicon-acim.txt */,
 				27A09D268E23ABE1FA9EE09E /* lexicon-us-en.txt */,
 				1500AB67A285C322852CD2FA /* model.int8.onnx */,
 				0203609C967877D27FDD1767 /* tokens.txt */,
@@ -117,11 +124,13 @@
 				2C026202BCA63E097D85F605 /* Resources */,
 				32D40D93ED00131AD56F0E75 /* ACIMAudioApp.swift */,
 				F957A551A22A08540BC7E5B0 /* ACIMParser.swift */,
+				4C90BC82E2B4B8663A2CB58F /* Assets.xcassets */,
 				6F98CE55EA5AD5BB3E824ACE /* AudioReader.swift */,
 				D93E59CA32F35326161FC995 /* BookLibrary.swift */,
 				DE17F077143AB8701F53BF60 /* CarouselPager.swift */,
 				7F1758B900D7C844BCE86859 /* ChapterPaginator.swift */,
 				2F6315A9B2ABEF2D27B56B32 /* ChaptersView.swift */,
+				FF76CAFBFACEAB79FB40CAA9 /* ClipCleanup.swift */,
 				F4BBA0ED47412DF6F5502A33 /* CorpusBuilder.swift */,
 				8FF53C42EFB3C5BAD05FA913 /* Design.swift */,
 				8E383D13BD4AA21434BE07A7 /* Info.plist */,
@@ -204,7 +213,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7FBFDDCE53E7BF8FD979B868 /* Assets.xcassets in Resources */,
 				5B35A8F09AAA4CA7FB02278C /* acim.json in Resources */,
+				1D552A35C3B2C0CC0CA83954 /* lexicon-acim.txt in Resources */,
 				9BCB4FF8119F3E86E46E8EBA /* lexicon-us-en.txt in Resources */,
 				595FA605D495004E51837BE1 /* model.int8.onnx in Resources */,
 				F86929EEB3AFBECB760B2E61 /* tokens.txt in Resources */,
@@ -226,6 +237,7 @@
 				7C7ABF9898377BD37DAE9D37 /* CarouselPager.swift in Sources */,
 				A7399ED420AD2749CCD57C60 /* ChapterPaginator.swift in Sources */,
 				0BDD89B2C533290B991F15C2 /* ChaptersView.swift in Sources */,
+				977F210091825A5E6168F610 /* ClipCleanup.swift in Sources */,
 				5DEFD15016CAC94CA60F1A2E /* CorpusBuilder.swift in Sources */,
 				A18C956DE9665D0363B23C1F /* Design.swift in Sources */,
 				14F2EB6F545F81451ADB2A38 /* KokoroSynthesizer.swift in Sources */,

@@ -49,10 +49,13 @@ struct PageTextView: UIViewRepresentable {
         coordinator.onTap = onTap
         view.textContainer.size = box
 
+        // A page that holds only the *next* sentence must repaint too, or the
+        // lead-in tone would never appear on it.
         let holdsCursor = page.sentenceIDs.contains(currentSentenceID)
+            || page.sentenceIDs.contains(currentSentenceID + 1)
         let key = holdsCursor
-            ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(theme.isDark)"
-            : "i:\(page.chapterID):\(page.id):\(theme.isDark)"
+            ? "c:\(page.chapterID):\(page.id):\(currentSentenceID):\(currentWordRange?.location ?? -1):\(currentWordRange?.length ?? 0):\(fontSize):\(theme.isDark)"
+            : "i:\(page.chapterID):\(page.id):\(fontSize):\(theme.isDark)"
         guard key != coordinator.renderedKey else { return }
         coordinator.renderedKey = key
         view.attributedText = coloured()
@@ -83,26 +86,54 @@ struct PageTextView: UIViewRepresentable {
         }
     }
 
-    /// Everything not being read sits back in grey; the live sentence is
-    /// full-strength ink; the single word being spoken is the only orange on
-    /// the screen.
+    /// Four strengths, so the page says where the voice is without shouting:
+    /// the text at rest is grey, the sentence coming next leans in, the
+    /// sentence being read is full-strength ink, and the single word being
+    /// spoken is the only orange on the screen.
     private func coloured() -> NSAttributedString {
         let out = NSMutableAttributedString(attributedString: page.text)
         let whole = NSRange(location: 0, length: out.length)
         out.addAttribute(.foregroundColor, value: theme.inkMuted, range: whole)
 
-        var sentenceStart: Int?
+        let nextSentenceID = currentSentenceID + 1
+        var sentenceOnPage: NSRange?
         page.text.enumerateAttribute(.acimSentence, in: whole) { value, range, _ in
-            guard let id = value as? Int, id == currentSentenceID else { return }
-            out.addAttribute(.foregroundColor, value: theme.ink, range: range)
-            if sentenceStart == nil { sentenceStart = range.location }
+            guard let id = value as? Int else { return }
+            if id == currentSentenceID {
+                out.addAttribute(.foregroundColor, value: theme.ink, range: range)
+                // The whole of the sentence that is on this page, not just the
+                // first run of it: the marker is clamped into this below.
+                sentenceOnPage = sentenceOnPage.map { NSUnionRange($0, range) } ?? range
+            } else if id == nextSentenceID {
+                out.addAttribute(.foregroundColor, value: theme.inkNext, range: range)
+            }
         }
 
-        if let start = sentenceStart, let word = currentWordRange, word.length > 0 {
-            let marked = NSRange(location: start + word.location, length: word.length)
-            if NSMaxRange(marked) <= out.length {
-                out.addAttributes([.foregroundColor: theme.accent,
-                                   .font: RamsFont.medium(fontSize)], range: marked)
+        if let sentence = sentenceOnPage, let word = currentWordRange, word.length > 0 {
+            // Word offsets count from the start of the sentence, which is not
+            // the start of what is on this page: a sentence running over a page
+            // break continues here mid-way. The old code dropped the marker
+            // whenever the arithmetic left the string — so on exactly those
+            // pages there was no marker at all. Clamp into the part of the
+            // sentence that is actually on this page instead; a marker pinned
+            // to the visible edge still says where the voice is, nothing says
+            // nothing.
+            let wanted = NSRange(location: sentence.location + word.location,
+                                 length: word.length)
+            let lower = max(sentence.location, min(wanted.location, NSMaxRange(sentence) - 1))
+            let upper = min(NSMaxRange(sentence), max(NSMaxRange(wanted), lower + 1))
+
+            if upper > lower, upper <= out.length {
+                // A wash, the way a highlighter works: the words keep their
+                // own ink and the colour lies under them. Solid accent with
+                // the text knocked out white reads as a selection rather than
+                // as something being read aloud.
+                //
+                // Background only: changing the cut would change the width,
+                // which re-breaks the line and makes the paragraph twitch word
+                // by word as the marker moves.
+                out.addAttribute(.backgroundColor, value: theme.marker,
+                                 range: NSRange(location: lower, length: upper - lower))
             }
         }
         return out

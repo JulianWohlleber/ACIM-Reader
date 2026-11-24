@@ -73,20 +73,39 @@ struct ReaderScreen: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Grid.x(1)) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top) {
+                // The way into the chapters. It used to be the heading text
+                // alone: a bare `Text` in a plain button owns only its glyphs,
+                // so a tap a few points high, low or past the last letter fell
+                // through and nothing happened. Now the control carries a
+                // label that names it, a mark that says it opens, and a box
+                // big enough to hit.
                 Button { showChapters = true } label: {
-                    Text(viewModel.heading)
-                        .font(.ramsMedium(16))
-                        .foregroundStyle(theme.inkC)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                    VStack(alignment: .leading, spacing: Grid.x(0.5)) {
+                        Text("Chapters").panelLabel(theme)
+                        HStack(spacing: Grid.x(1)) {
+                            Text(viewModel.heading)
+                                .font(.ramsMedium(16))
+                                .foregroundStyle(theme.inkC)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            DisclosureMark(theme: theme)
+                        }
+                    }
+                    .padding(.vertical, Grid.x(1))
+                    .padding(.trailing, Grid.x(1))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
                 Spacer(minLength: Grid.x(2))
 
                 Button { showVoices = true } label: {
-                    Text("Voice").panelLabel(theme)
+                    Text("Voice")
+                        .panelLabel(theme)
+                        .padding(.vertical, Grid.x(1))
+                        .padding(.leading, Grid.x(2))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -121,13 +140,12 @@ struct ReaderScreen: View {
         } makePage: { index in
             Group {
                 if index < pages.count {
-                    PageTextView(page: pages[index],
-                                 box: box,
-                                 currentSentenceID: viewModel.audio.currentSentenceID,
-                                 currentWordRange: viewModel.audio.currentWordRange,
-                                 fontSize: CGFloat(fontSize),
-                                 theme: theme,
-                                 onTap: { viewModel.tapped(sentenceID: $0) })
+                    MarkedPage(audio: viewModel.audio,
+                               page: pages[index],
+                               box: box,
+                               fontSize: CGFloat(fontSize),
+                               theme: theme,
+                               onTap: { viewModel.tapped(sentenceID: $0) })
                         .frame(width: box.width, height: box.height, alignment: .topLeading)
                 } else if let nextChapter {
                     ChapterTurnView(next: nextChapter, theme: theme) {
@@ -206,5 +224,58 @@ struct ReaderScreen: View {
             .accessibilityLabel(viewModel.audio.isPlaying ? "Pause" : "Play")
         }
         .hairline(theme, edge: .top)
+    }
+}
+
+/// The mark that says a heading opens something.
+///
+/// A downward triangle: the same figure the app icon is built from, pointing
+/// the way the panel arrives. Small and in the signal colour, because it is
+/// the only thing on the page asking to be pressed.
+private struct DisclosureMark: View {
+    let theme: RamsTheme
+
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addLine(to: CGPoint(x: 10, y: 0))
+            path.addLine(to: CGPoint(x: 5, y: 6))
+            path.closeSubpath()
+        }
+        .fill(theme.accentC)
+        .frame(width: 10, height: 6)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The page, watching the reader itself.
+///
+/// `ReaderViewModel` republishes only the slow signals from its nested
+/// `AudioReader` — playing, paused, preparing, and the sentence — on the
+/// stated assumption that the page view would observe the reader directly for
+/// the word marker. It never did: it read the word range through the view
+/// model without observing it, so the marker only ever reached the screen when
+/// something *else* changed. That is why it appeared on pause, holding its
+/// last position, and was missing while the voice ran.
+///
+/// Observing here rather than republishing from the view model keeps the cost
+/// where it belongs: the marker moves several times a second, and only this
+/// page is redrawn for it, not the whole screen.
+private struct MarkedPage: View {
+    @ObservedObject var audio: AudioReader
+    let page: ChapterPaginator.Page
+    let box: CGSize
+    let fontSize: CGFloat
+    let theme: RamsTheme
+    let onTap: (Int) -> Void
+
+    var body: some View {
+        PageTextView(page: page,
+                     box: box,
+                     currentSentenceID: audio.currentSentenceID,
+                     currentWordRange: audio.currentWordRange,
+                     fontSize: fontSize,
+                     theme: theme,
+                     onTap: onTap)
     }
 }
